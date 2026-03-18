@@ -535,6 +535,177 @@ def generate_seasonal_recommendations(df, biz_name="전체"):
     return recommendations, monthly
 
 
+def generate_channel_strategies(df, biz_name="전체"):
+    """채널별(쇼핑몰별) 프로모션 전략 (축산 MD 전문가 관점)"""
+
+    # 채널별 마케팅 전략 (전문가 지식)
+    channel_strategies = {
+        '스마트스토어': {
+            'name': '네이버 스마트스토어',
+            'icon': '🟢',
+            'strength': '검색 유입, 네이버페이, 리뷰 마케팅',
+            'target': '검색 기반 신규 고객, 가격 비교 고객',
+            'promotion': [
+                '네이버 쇼핑 검색광고 (SA) 집중',
+                '브랜드검색 광고로 브랜드명 선점',
+                '리뷰 이벤트로 상품평 확보 (텍스트+포토)',
+                '네이버 라이브커머스 활용',
+                '톡톡 친구 추가 할인 프로모션'
+            ],
+            'tip': '상품명에 키워드 최적화 필수 (예: 한우 등심 1++ 구이용 300g)'
+        },
+        '쿠팡': {
+            'name': '쿠팡',
+            'icon': '🟠',
+            'strength': '로켓배송, 충성 고객, 대량 구매',
+            'target': '로켓와우 회원, 편의성 중시 고객',
+            'promotion': [
+                '로켓그로스 입점으로 로켓배송 뱃지 획득',
+                '골드박스/빅딜 프로모션 참여',
+                '쿠팡 라이브 방송 활용',
+                '묶음배송 할인으로 객단가 상승',
+                '리뷰 작성 유도 (쿠팡 상위노출 핵심)'
+            ],
+            'tip': '로켓배송 필수! 일반배송은 노출 불리'
+        },
+        'G마켓': {
+            'name': 'G마켓/옥션',
+            'icon': '🔴',
+            'strength': '스마일클럽, 빅스마일데이, 슈퍼딜',
+            'target': '할인/적립금 민감 고객, 40-50대',
+            'promotion': [
+                '빅스마일데이 행사 필수 참여',
+                '슈퍼딜/타임딜 등록',
+                '스마일클럽 전용 할인가 설정',
+                'G마켓/옥션 동시 노출로 효율 극대화',
+                '스마일페이 결제 추가 할인'
+            ],
+            'tip': '빅스마일데이 기간에 매출 집중 - 사전 재고 확보 필수'
+        },
+        '11번가': {
+            'name': '11번가',
+            'icon': '🟣',
+            'strength': 'SK페이, 아마존 글로벌, 라이브11',
+            'target': 'SKT 고객, 젊은 층',
+            'promotion': [
+                '십일절(11절) 행사 참여',
+                'SK페이 추가 할인 프로모션',
+                '라이브11 방송으로 실시간 판매',
+                '타임딜/오늘의 발견 노출',
+                '아마존 글로벌 셀링 연계'
+            ],
+            'tip': 'SKT 멤버십 연계 프로모션 효과적'
+        },
+        '카카오': {
+            'name': '카카오쇼핑/톡스토어',
+            'icon': '🟡',
+            'strength': '카카오톡 기반, 선물하기, 바이럴',
+            'target': '선물 수요, MZ세대, 카카오 헤비유저',
+            'promotion': [
+                '카카오 선물하기 입점 (명절 필수)',
+                '톡딜 참여로 바이럴 유도',
+                '카카오톡 채널 친구 모집',
+                '비즈보드 광고 (카카오톡 노출)',
+                '이모티콘 증정 이벤트'
+            ],
+            'tip': '선물하기는 명절/기념일 매출 핵심 채널'
+        },
+        '위메프': {
+            'name': '위메프',
+            'icon': '🔵',
+            'strength': '특가 이미지, 원더배송',
+            'target': '특가/최저가 추구 고객',
+            'promotion': [
+                '투데이특가/슈퍼특가 등록',
+                '원더배송 활용',
+                '타임특가로 트래픽 유도',
+                '위메프데이 참여'
+            ],
+            'tip': '최저가 경쟁력 확보 시 효과적'
+        },
+        '티몬': {
+            'name': '티몬',
+            'icon': '🔵',
+            'strength': '타임커머스, 티몬데이',
+            'target': '특가/타임딜 선호 고객',
+            'promotion': [
+                '티몬데이 프로모션 참여',
+                '슈퍼마트 입점',
+                '타임특가 등록'
+            ],
+            'tip': '티몬데이 기간 집중 프로모션'
+        },
+        '인터파크': {
+            'name': '인터파크',
+            'icon': '🟤',
+            'strength': '종합몰, 올인원 쇼핑',
+            'target': '종합 쇼핑 고객',
+            'promotion': [
+                '카테고리 기획전 참여',
+                '인터파크 멤버십 연계 할인'
+            ],
+            'tip': '식품 카테고리 기획전 노출 중요'
+        }
+    }
+
+    if df is None or len(df) == 0:
+        return [], channel_strategies
+
+    # 데이터에서 쇼핑몰별 매출 분석
+    shop_col = get_shop_col(df)
+    normal = df[~df['취소여부']]
+
+    if biz_name != "전체":
+        normal = normal[normal['사업장'] == biz_name]
+
+    if len(normal) == 0:
+        return [], channel_strategies
+
+    shop_stats = normal.groupby(shop_col).agg({
+        '금액': 'sum',
+        '묶음번호': 'nunique',
+        '주문수량': 'sum'
+    }).reset_index()
+    shop_stats.columns = ['쇼핑몰', '매출', '주문건수', '판매수량']
+    shop_stats['객단가'] = (shop_stats['매출'] / shop_stats['주문건수']).fillna(0).astype(int)
+    shop_stats = shop_stats.sort_values('매출', ascending=False)
+
+    total_revenue = shop_stats['매출'].sum()
+    shop_stats['매출비중'] = (shop_stats['매출'] / total_revenue * 100).round(1)
+
+    recommendations = []
+
+    # 상위 채널 분석
+    for idx, row in shop_stats.head(5).iterrows():
+        shop_name = row['쇼핑몰']
+
+        # 채널 매칭
+        matched_strategy = None
+        for key, strategy in channel_strategies.items():
+            if key.lower() in shop_name.lower() or shop_name.lower() in key.lower():
+                matched_strategy = strategy
+                break
+
+        # 스마트스토어 변형 체크
+        if matched_strategy is None and ('스토어' in shop_name or 'naver' in shop_name.lower()):
+            matched_strategy = channel_strategies.get('스마트스토어')
+
+        # 쿠팡 변형 체크
+        if matched_strategy is None and ('coupang' in shop_name.lower() or '쿠팡' in shop_name):
+            matched_strategy = channel_strategies.get('쿠팡')
+
+        recommendations.append({
+            'shop': shop_name,
+            'revenue': row['매출'],
+            'ratio': row['매출비중'],
+            'orders': row['주문건수'],
+            'aov': row['객단가'],
+            'strategy': matched_strategy
+        })
+
+    return recommendations, channel_strategies
+
+
 def analyze_hourly_pattern(df, by_business=False):
     """시간대별 매출 패턴 분석 (30분 단위, 결제완료일 기준)"""
     if df is None or len(df) == 0:
@@ -1133,7 +1304,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
     st.markdown("---")
     st.markdown("### 🎯 프로모션 추천 (축산 MD 전문가 분석)")
 
-    promo_tabs = st.tabs(["⏰ 시간대별 전략", "🗓️ 시즌별 전략"])
+    promo_tabs = st.tabs(["⏰ 시간대별 전략", "🗓️ 시즌별 전략", "🏪 채널별 전략"])
 
     with promo_tabs[0]:
         st.markdown('<span class="date-basis">💡 주문 패턴 기반 광고/프로모션 타이밍 추천</span>', unsafe_allow_html=True)
@@ -1272,6 +1443,89 @@ def render_dashboard(analyzer: OrderAnalyzer):
             ]
             calendar_df = pd.DataFrame(calendar_data)
             st.dataframe(calendar_df, use_container_width=True, hide_index=True)
+
+    with promo_tabs[2]:
+        st.markdown('<span class="date-basis">💡 판매 채널별 맞춤 마케팅 전략</span>', unsafe_allow_html=True)
+
+        # 사업장 선택
+        channel_biz = st.radio("사업장 선택", ["전체", "육구이", "우주인"], horizontal=True, key="channel_biz")
+
+        channel_recommendations, all_strategies = generate_channel_strategies(revenue_df, channel_biz)
+
+        if channel_recommendations:
+            st.markdown("#### 📊 내 채널별 맞춤 전략")
+            st.caption("매출 데이터를 기반으로 상위 채널에 맞는 전략을 추천합니다.")
+
+            for rec in channel_recommendations:
+                strategy = rec['strategy']
+                if strategy:
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg, #f5f5f5, #eeeeee); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #666;">
+                        <div style="font-weight:bold; font-size:18px; margin-bottom:10px;">
+                            {strategy['icon']} {rec['shop']}
+                            <span style="font-size:14px; color:#666; margin-left:10px;">
+                                매출 {rec['revenue']:,}원 ({rec['ratio']}%) | 객단가 {rec['aov']:,}원
+                            </span>
+                        </div>
+                        <div style="color:#555; margin:8px 0;">
+                            <b>강점:</b> {strategy['strength']}<br>
+                            <b>타겟:</b> {strategy['target']}<br>
+                            <b>💡 TIP:</b> {strategy['tip']}
+                        </div>
+                        <div style="margin-top:10px;">
+                            <b>추천 프로모션:</b>
+                            <ul style="margin:5px 0; padding-left:20px;">
+                    """, unsafe_allow_html=True)
+                    for promo in strategy['promotion'][:4]:
+                        st.markdown(f"<li>{promo}</li>", unsafe_allow_html=True)
+                    st.markdown("</ul></div></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style="background:#f9f9f9; padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #999;">
+                        <div style="font-weight:bold; font-size:16px;">
+                            🏪 {rec['shop']}
+                            <span style="font-size:14px; color:#666; margin-left:10px;">
+                                매출 {rec['revenue']:,}원 ({rec['ratio']}%) | 객단가 {rec['aov']:,}원
+                            </span>
+                        </div>
+                        <div style="color:#888; margin-top:5px;">해당 채널의 상세 전략 정보가 없습니다.</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # 전체 채널 전략 가이드
+        with st.expander("📚 전체 채널 마케팅 가이드", expanded=False):
+            for key, strategy in all_strategies.items():
+                st.markdown(f"""
+                **{strategy['icon']} {strategy['name']}**
+                - 강점: {strategy['strength']}
+                - 타겟: {strategy['target']}
+                - TIP: {strategy['tip']}
+                """)
+                st.markdown("---")
+
+        # 사업장별 채널 전략 차이
+        if channel_biz == "전체":
+            st.markdown("#### 🔍 사업장별 주력 채널 비교")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**🥩 육구이**")
+                육구이_recs, _ = generate_channel_strategies(revenue_df, "육구이")
+                if 육구이_recs:
+                    for rec in 육구이_recs[:3]:
+                        st.markdown(f"- {rec['shop']}: {rec['revenue']:,}원 ({rec['ratio']}%)")
+                else:
+                    st.info("데이터가 없습니다.")
+
+            with col2:
+                st.markdown("**🚀 우주인**")
+                우주인_recs, _ = generate_channel_strategies(revenue_df, "우주인")
+                if 우주인_recs:
+                    for rec in 우주인_recs[:3]:
+                        st.markdown(f"- {rec['shop']}: {rec['revenue']:,}원 ({rec['ratio']}%)")
+                else:
+                    st.info("데이터가 없습니다.")
 
     # 다운로드
     st.markdown("---")
