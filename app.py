@@ -68,7 +68,21 @@ def get_shop_col(df: pd.DataFrame) -> str:
 
 def get_analyzer() -> OrderAnalyzer:
     if 'analyzer' not in st.session_state:
-        st.session_state.analyzer = OrderAnalyzer()
+        # GitHub 저장소 설정 확인
+        github_token = None
+        github_repo = None
+
+        try:
+            if hasattr(st, 'secrets'):
+                github_token = st.secrets.get("GITHUB_TOKEN", None)
+                github_repo = st.secrets.get("GITHUB_REPO", None)
+        except Exception:
+            pass
+
+        st.session_state.analyzer = OrderAnalyzer(
+            github_token=github_token,
+            github_repo=github_repo
+        )
     return st.session_state.analyzer
 
 

@@ -3,9 +3,97 @@
 
 import pandas as pd
 import json
+import requests
+import base64
+from io import StringIO
 from datetime import datetime, date
 from typing import Dict, List, Optional
 from pathlib import Path
+
+
+class GitHubStorage:
+    """GitHub 저장소 기반 데이터 저장"""
+
+    def __init__(self, token: str, repo: str, branch: str = "main"):
+        self.token = token
+        self.repo = repo  # "username/repo-name"
+        self.branch = branch
+        self.api_base = "https://api.github.com"
+        self.headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+    def _get_file(self, path: str) -> Optional[dict]:
+        """GitHub에서 파일 정보 가져오기"""
+        url = f"{self.api_base}/repos/{self.repo}/contents/{path}?ref={self.branch}"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code == 200:
+            return response.json()
+        return None
+
+    def read_json(self, path: str) -> Optional[dict]:
+        """GitHub에서 JSON 파일 읽기"""
+        file_info = self._get_file(path)
+        if file_info and 'content' in file_info:
+            content = base64.b64decode(file_info['content']).decode('utf-8')
+            return json.loads(content)
+        return None
+
+    def read_csv(self, path: str) -> Optional[pd.DataFrame]:
+        """GitHub에서 CSV 파일 읽기"""
+        file_info = self._get_file(path)
+        if file_info and 'content' in file_info:
+            content = base64.b64decode(file_info['content']).decode('utf-8')
+            return pd.read_csv(StringIO(content))
+        return None
+
+    def write_file(self, path: str, content: str, message: str = "Update data") -> bool:
+        """GitHub에 파일 쓰기"""
+        url = f"{self.api_base}/repos/{self.repo}/contents/{path}"
+
+        # 기존 파일 SHA 확인 (업데이트 시 필요)
+        existing = self._get_file(path)
+        sha = existing.get('sha') if existing else None
+
+        # Base64 인코딩
+        content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+
+        data = {
+            "message": message,
+            "content": content_b64,
+            "branch": self.branch
+        }
+        if sha:
+            data["sha"] = sha
+
+        response = requests.put(url, headers=self.headers, json=data)
+        return response.status_code in [200, 201]
+
+    def write_json(self, path: str, data: dict, message: str = "Update data") -> bool:
+        """GitHub에 JSON 파일 쓰기"""
+        content = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+        return self.write_file(path, content, message)
+
+    def write_csv(self, path: str, df: pd.DataFrame, message: str = "Update data") -> bool:
+        """GitHub에 CSV 파일 쓰기"""
+        content = df.to_csv(index=False)
+        return self.write_file(path, content, message)
+
+    def delete_file(self, path: str, message: str = "Delete data") -> bool:
+        """GitHub에서 파일 삭제"""
+        existing = self._get_file(path)
+        if not existing:
+            return True
+
+        url = f"{self.api_base}/repos/{self.repo}/contents/{path}"
+        data = {
+            "message": message,
+            "sha": existing['sha'],
+            "branch": self.branch
+        }
+        response = requests.delete(url, headers=self.headers, json=data)
+        return response.status_code == 200
 
 
 class OrderAnalyzer:
@@ -17,21 +105,69 @@ class OrderAnalyzer:
         '우주인': ['kms', 'sosin']
     }
 
-    # 데이터 저장 경로
+    # 데이터 저장 경로 (로컬)
     DATA_DIR = Path.home() / 'playauto-analyzer-data'
     DATA_FILE = DATA_DIR / 'order_data.pkl'
     META_FILE = DATA_DIR / 'order_metadata.json'
 
-    def __init__(self):
+    # GitHub 저장 경로
+    GITHUB_DATA_FILE = "data/order_data.csv"
+    GITHUB_META_FILE = "data/metadata.json"
+
+    def __init__(self, github_token: str = None, github_repo: str = None):
         self.data: Dict[str, pd.DataFrame] = {}
         self.metadata: Dict[str, dict] = {}
         self.combined_df: Optional[pd.DataFrame] = None
 
-        self.DATA_DIR.mkdir(exist_ok=True)
+        # GitHub 저장소 설정
+        self.github: Optional[GitHubStorage] = None
+        if github_token and github_repo:
+            self.github = GitHubStorage(github_token, github_repo)
+
+        # 로컬 디렉토리 생성 (로컬 모드일 때만)
+        if not self.github:
+            self.DATA_DIR.mkdir(exist_ok=True)
+
         self._load_saved_data()
 
     def _load_saved_data(self):
         """저장된 데이터 로드"""
+        if self.github:
+            self._load_from_github()
+        else:
+            self._load_from_local()
+
+    def _load_from_github(self):
+        """GitHub에서 데이터 로드"""
+        try:
+            # 메타데이터 로드
+            meta = self.github.read_json(self.GITHUB_META_FILE)
+            if meta:
+                self.metadata = meta
+
+            # 데이터 로드
+            df = self.github.read_csv(self.GITHUB_DATA_FILE)
+            if df is not None and not df.empty:
+                # 날짜 컬럼 변환
+                if '날짜' in df.columns:
+                    df['날짜'] = pd.to_datetime(df['날짜']).dt.date
+                if '출고날짜' in df.columns:
+                    df['출고날짜'] = pd.to_datetime(df['출고날짜']).dt.date
+                if '결제일시' in df.columns:
+                    df['결제일시'] = pd.to_datetime(df['결제일시'])
+                if '출고일시' in df.columns:
+                    df['출고일시'] = pd.to_datetime(df['출고일시'])
+                if '취소여부' in df.columns:
+                    df['취소여부'] = df['취소여부'].astype(bool)
+
+                self.combined_df = df
+                for period in df['기간'].unique():
+                    self.data[period] = df[df['기간'] == period].copy()
+        except Exception as e:
+            print(f"GitHub 데이터 로드 실패: {e}")
+
+    def _load_from_local(self):
+        """로컬에서 데이터 로드"""
         if self.DATA_FILE.exists():
             try:
                 self.combined_df = pd.read_pickle(self.DATA_FILE)
@@ -51,6 +187,25 @@ class OrderAnalyzer:
 
     def _save_data(self):
         """데이터 저장"""
+        if self.github:
+            self._save_to_github()
+        else:
+            self._save_to_local()
+
+    def _save_to_github(self):
+        """GitHub에 데이터 저장"""
+        try:
+            # 메타데이터 저장
+            self.github.write_json(self.GITHUB_META_FILE, self.metadata, "Update metadata")
+
+            # 데이터 저장
+            if self.combined_df is not None and not self.combined_df.empty:
+                self.github.write_csv(self.GITHUB_DATA_FILE, self.combined_df, "Update order data")
+        except Exception as e:
+            print(f"GitHub 저장 실패: {e}")
+
+    def _save_to_local(self):
+        """로컬에 데이터 저장"""
         if self.combined_df is not None and not self.combined_df.empty:
             self.combined_df.to_pickle(self.DATA_FILE)
 
@@ -176,10 +331,16 @@ class OrderAnalyzer:
         self.metadata = {}
         self.combined_df = None
 
-        if self.DATA_FILE.exists():
-            self.DATA_FILE.unlink()
-        if self.META_FILE.exists():
-            self.META_FILE.unlink()
+        if self.github:
+            # GitHub에서 삭제
+            self.github.delete_file(self.GITHUB_DATA_FILE, "Clear all data")
+            self.github.delete_file(self.GITHUB_META_FILE, "Clear metadata")
+        else:
+            # 로컬에서 삭제
+            if self.DATA_FILE.exists():
+                self.DATA_FILE.unlink()
+            if self.META_FILE.exists():
+                self.META_FILE.unlink()
 
     def get_loaded_periods(self) -> List[dict]:
         """로드된 기간 목록 반환"""

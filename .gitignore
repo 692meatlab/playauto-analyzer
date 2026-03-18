@@ -7,3 +7,4 @@ venv/
 *.pkl
 order_data.pkl
 order_metadata.json
+.streamlit/secrets.toml
