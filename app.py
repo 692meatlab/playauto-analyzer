@@ -780,6 +780,20 @@ def main():
                 st.session_state.current_page = menu
                 st.rerun()
 
+        # 프로모션 메뉴
+        st.markdown("---")
+        st.markdown('<p class="menu-header">🎁 프로모션</p>', unsafe_allow_html=True)
+
+        promo_menus = ['프로모션 플래너', '준비 체크리스트', '경쟁사 분석']
+        promo_icons = {'프로모션 플래너': '📋', '준비 체크리스트': '✅', '경쟁사 분석': '🔍'}
+
+        for menu in promo_menus:
+            is_selected = st.session_state.current_page == menu
+            btn_type = "primary" if is_selected else "secondary"
+            if st.button(f"{promo_icons[menu]} {menu}", key=f"menu_{menu}", use_container_width=True, type=btn_type):
+                st.session_state.current_page = menu
+                st.rerun()
+
         # 관리 메뉴
         st.markdown("---")
         st.markdown('<p class="menu-header">⚙️ 관리</p>', unsafe_allow_html=True)
@@ -831,6 +845,12 @@ def main():
         render_upload_page(analyzer)
     elif current_page == '저장된 데이터':
         render_data_list_page(analyzer)
+    elif current_page == '프로모션 플래너':
+        render_promotion_planner(analyzer)
+    elif current_page == '준비 체크리스트':
+        render_preparation_checklist(analyzer)
+    elif current_page == '경쟁사 분석':
+        render_competitor_analysis(analyzer)
     elif not has_data:
         render_empty_state()
     elif current_page == '대시보드':
@@ -2235,6 +2255,666 @@ def render_period_comparison(analyzer: OrderAnalyzer):
                 file_name=f"기간비교_{base_start}_{base_end}_vs_{comp_start}_{comp_end}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+
+def render_promotion_planner(analyzer: OrderAnalyzer):
+    """프로모션 플래너"""
+    st.title("📋 프로모션 플래너")
+    st.markdown("이벤트 선택부터 할인율, 마진 계산, 예상 매출까지 한 번에 기획하세요.")
+
+    # 세션 상태 초기화
+    if 'promo_events' not in st.session_state:
+        st.session_state.promo_events = []
+
+    # 이벤트 캘린더 데이터
+    events_calendar = {
+        '1월': [
+            {'name': '신정', 'date': '1/1', 'type': '공휴일', 'priority': '보통'},
+            {'name': '설날', 'date': '1월말~2월초', 'type': '명절', 'priority': '★필수★'},
+        ],
+        '2월': [
+            {'name': '발렌타인데이', 'date': '2/14', 'type': '기념일', 'priority': '보통'},
+            {'name': '육고기데이', 'date': '2/9', 'type': '민간기념일', 'priority': '추천'},
+        ],
+        '3월': [
+            {'name': '삼삼데이', 'date': '3/3', 'type': '민간기념일', 'priority': '추천'},
+            {'name': '화이트데이', 'date': '3/14', 'type': '기념일', 'priority': '보통'},
+            {'name': '한우데이', 'date': '3/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '4월': [
+            {'name': '블랙데이', 'date': '4/14', 'type': '기념일', 'priority': '보통'},
+            {'name': '한우데이', 'date': '4/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '5월': [
+            {'name': '어린이날', 'date': '5/5', 'type': '공휴일', 'priority': '추천'},
+            {'name': '어버이날', 'date': '5/8', 'type': '기념일', 'priority': '추천'},
+            {'name': '스승의날', 'date': '5/15', 'type': '기념일', 'priority': '보통'},
+            {'name': '한우데이', 'date': '5/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '6월': [
+            {'name': '현충일', 'date': '6/6', 'type': '공휴일', 'priority': '보통'},
+            {'name': '육고기데이', 'date': '6/9', 'type': '민간기념일', 'priority': '추천'},
+            {'name': '한우데이', 'date': '6/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '7월': [
+            {'name': '초복', 'date': '7월중순', 'type': '절기', 'priority': '★필수★'},
+            {'name': '중복', 'date': '7월말', 'type': '절기', 'priority': '★필수★'},
+            {'name': '한우데이', 'date': '7/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '8월': [
+            {'name': '말복', 'date': '8월초', 'type': '절기', 'priority': '★필수★'},
+            {'name': '광복절', 'date': '8/15', 'type': '공휴일', 'priority': '보통'},
+            {'name': '한우데이', 'date': '8/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '9월': [
+            {'name': '추석', 'date': '9월중순', 'type': '명절', 'priority': '★필수★'},
+            {'name': '한우데이', 'date': '9/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+            {'name': '구구데이', 'date': '9/9', 'type': '민간기념일', 'priority': '추천'},
+        ],
+        '10월': [
+            {'name': '한글날', 'date': '10/9', 'type': '공휴일', 'priority': '보통'},
+            {'name': '빼빼로데이', 'date': '10/11', 'type': '기념일', 'priority': '보통'},
+            {'name': '한우데이', 'date': '10/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '11월': [
+            {'name': '빼빼로데이', 'date': '11/11', 'type': '기념일', 'priority': '보통'},
+            {'name': '블랙프라이데이', 'date': '11월말', 'type': '세일', 'priority': '추천'},
+            {'name': '한우데이', 'date': '11/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+        '12월': [
+            {'name': '크리스마스', 'date': '12/25', 'type': '공휴일', 'priority': '추천'},
+            {'name': '연말/송년', 'date': '12월말', 'type': '시즌', 'priority': '추천'},
+            {'name': '한우데이', 'date': '12/9,19,29', 'type': '민간기념일', 'priority': '★필수★'},
+        ],
+    }
+
+    # ===== 1. 이벤트 선택 =====
+    st.markdown("### 📅 1. 이벤트 선택")
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        selected_month = st.selectbox("월 선택", list(events_calendar.keys()), key="promo_month")
+
+    with col2:
+        month_events = events_calendar.get(selected_month, [])
+        event_options = [f"{e['name']} ({e['date']}) - {e['priority']}" for e in month_events]
+        event_options.append("직접 입력")
+        selected_event = st.selectbox("이벤트 선택", event_options, key="promo_event")
+
+    if selected_event == "직접 입력":
+        custom_event = st.text_input("이벤트명 입력", key="custom_event")
+        custom_date = st.text_input("날짜 입력 (예: 3/15)", key="custom_date")
+        event_name = custom_event
+        event_date = custom_date
+    else:
+        idx = event_options.index(selected_event)
+        if idx < len(month_events):
+            event_name = month_events[idx]['name']
+            event_date = month_events[idx]['date']
+        else:
+            event_name = ""
+            event_date = ""
+
+    # ===== 2. 상품 및 할인 설정 =====
+    st.markdown("### 💰 2. 상품 및 할인 설정")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        product_name = st.text_input("상품명", value="", key="promo_product")
+        original_price = st.number_input("정상가 (원)", min_value=0, step=1000, value=50000, key="promo_price")
+
+    with col2:
+        discount_rate = st.slider("할인율 (%)", min_value=0, max_value=50, value=10, key="promo_discount")
+        sale_price = int(original_price * (1 - discount_rate / 100))
+        st.metric("판매가", f"{sale_price:,}원", f"-{discount_rate}%")
+
+    with col3:
+        cost_price = st.number_input("원가 (원)", min_value=0, step=1000, value=30000, key="promo_cost")
+        margin = sale_price - cost_price
+        margin_rate = (margin / sale_price * 100) if sale_price > 0 else 0
+        color = "#2ecc71" if margin_rate >= 20 else ("#f39c12" if margin_rate >= 10 else "#e74c3c")
+        st.markdown(f"""
+        <div style="background:#f8f9fa; padding:10px; border-radius:8px; text-align:center;">
+            <div style="font-size:12px; color:#888;">마진</div>
+            <div style="font-size:20px; font-weight:bold; color:{color};">{margin:,}원 ({margin_rate:.1f}%)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ===== 3. 예상 매출 시뮬레이션 =====
+    st.markdown("### 📊 3. 예상 매출 시뮬레이션")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        expected_qty = st.number_input("예상 판매수량", min_value=0, step=10, value=100, key="promo_qty")
+    with col2:
+        expected_revenue = sale_price * expected_qty
+        st.metric("예상 매출", f"{expected_revenue:,}원")
+    with col3:
+        expected_profit = margin * expected_qty
+        st.metric("예상 순이익", f"{expected_profit:,}원")
+
+    # 할인율별 시뮬레이션
+    st.markdown("#### 📈 할인율별 예상 수익 비교")
+    sim_data = []
+    for dr in [0, 5, 10, 15, 20, 25, 30]:
+        sp = int(original_price * (1 - dr / 100))
+        mg = sp - cost_price
+        mr = (mg / sp * 100) if sp > 0 else 0
+        # 할인율이 높을수록 판매량 증가 가정 (10% 할인당 20% 판매량 증가)
+        qty_multiplier = 1 + (dr / 10 * 0.2)
+        est_qty = int(expected_qty * qty_multiplier)
+        est_rev = sp * est_qty
+        est_profit = mg * est_qty
+        sim_data.append({
+            '할인율': f'{dr}%',
+            '판매가': sp,
+            '마진': mg,
+            '마진율': f'{mr:.1f}%',
+            '예상판매량': est_qty,
+            '예상매출': est_rev,
+            '예상순이익': est_profit
+        })
+
+    sim_df = pd.DataFrame(sim_data)
+    st.dataframe(sim_df.style.format({
+        '판매가': '{:,}원', '마진': '{:,}원', '예상판매량': '{:,}개',
+        '예상매출': '{:,}원', '예상순이익': '{:,}원'
+    }), use_container_width=True, hide_index=True)
+
+    # 최적 할인율 추천
+    optimal = sim_df.loc[sim_df['예상순이익'].idxmax()]
+    st.success(f"💡 **추천 할인율**: {optimal['할인율']} (예상 순이익 {optimal['예상순이익']:,}원)")
+
+    # ===== 4. 프로모션 저장 =====
+    st.markdown("### 💾 4. 프로모션 저장")
+
+    if st.button("📌 이 프로모션 저장", key="save_promo"):
+        promo = {
+            'event_name': event_name,
+            'event_date': event_date,
+            'product_name': product_name,
+            'original_price': original_price,
+            'discount_rate': discount_rate,
+            'sale_price': sale_price,
+            'cost_price': cost_price,
+            'margin': margin,
+            'margin_rate': margin_rate,
+            'expected_qty': expected_qty,
+            'expected_revenue': expected_revenue,
+            'expected_profit': expected_profit
+        }
+        st.session_state.promo_events.append(promo)
+        st.success(f"'{event_name} - {product_name}' 프로모션이 저장되었습니다!")
+
+    # 저장된 프로모션 목록
+    if st.session_state.promo_events:
+        st.markdown("#### 📋 저장된 프로모션")
+        for i, promo in enumerate(st.session_state.promo_events):
+            with st.expander(f"🎯 {promo['event_name']} - {promo['product_name']}", expanded=False):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"**이벤트**: {promo['event_name']} ({promo['event_date']})")
+                    st.write(f"**상품**: {promo['product_name']}")
+                with col2:
+                    st.write(f"**정상가**: {promo['original_price']:,}원")
+                    st.write(f"**할인율**: {promo['discount_rate']}%")
+                    st.write(f"**판매가**: {promo['sale_price']:,}원")
+                with col3:
+                    st.write(f"**마진**: {promo['margin']:,}원 ({promo['margin_rate']:.1f}%)")
+                    st.write(f"**예상매출**: {promo['expected_revenue']:,}원")
+                    st.write(f"**예상순이익**: {promo['expected_profit']:,}원")
+
+                if st.button(f"🗑️ 삭제", key=f"del_promo_{i}"):
+                    st.session_state.promo_events.pop(i)
+                    st.rerun()
+
+
+def render_preparation_checklist(analyzer: OrderAnalyzer):
+    """준비 체크리스트"""
+    st.title("✅ 준비 체크리스트")
+    st.markdown("프로모션 D-Day까지 단계별 준비 사항을 체크하세요.")
+
+    # 세션 상태 초기화
+    if 'checklist_items' not in st.session_state:
+        st.session_state.checklist_items = {}
+
+    # 이벤트 유형별 체크리스트 템플릿
+    checklist_templates = {
+        '명절 (설날/추석)': {
+            'D-30': [
+                '명절 선물세트 구성 확정',
+                '포장재/박스 디자인 확정',
+                '예상 판매량 기반 원육 발주',
+                '명절 특가 상품 선정',
+            ],
+            'D-14': [
+                '상품 페이지 업데이트 (명절 테마)',
+                '할인율 및 판매가 최종 확정',
+                '광고 소재 제작 완료',
+                '재고 입고 확인',
+                '택배사 물량 사전 협의',
+                '카카오 선물하기 입점 확인',
+            ],
+            'D-7': [
+                '광고 집행 시작 (검색광고, SNS)',
+                '스마트스토어/쿠팡 프로모션 등록',
+                '포장 인력 확보',
+                '고객 CS 응대 매뉴얼 준비',
+                '배송 마감일 공지 준비',
+            ],
+            'D-3': [
+                '최종 재고 점검',
+                '포장 라인 가동 준비',
+                '배송 마감일 D-2 공지',
+                '광고 예산 추가 투입 검토',
+            ],
+            'D-Day': [
+                '실시간 주문 모니터링',
+                '재고 소진 상품 품절 처리',
+                '긴급 CS 대응',
+                '당일 출고 마감 관리',
+            ],
+            'D+1': [
+                '미출고 주문 확인 및 출고',
+                '반품/교환 처리 준비',
+                '프로모션 성과 중간 점검',
+            ],
+        },
+        '복날 (초복/중복/말복)': {
+            'D-14': [
+                '복날 특가 상품 선정 (소고기, 보양식)',
+                '복날 기획전 페이지 준비',
+                '예상 판매량 기반 재고 확보',
+            ],
+            'D-7': [
+                '복날 프로모션 등록 (각 채널)',
+                '광고 소재 제작 및 집행',
+                'SNS 복날 이벤트 공지',
+                '배송 스케줄 확정',
+            ],
+            'D-3': [
+                '최종 재고 점검',
+                '포장/출고 인력 확보',
+                '당일 배송 가능 지역 확인',
+            ],
+            'D-Day': [
+                '실시간 주문 대응',
+                '당일 출고 마감 관리',
+                '품절 상품 즉시 처리',
+            ],
+        },
+        '일반 프로모션': {
+            'D-7': [
+                '할인 상품 및 할인율 확정',
+                '상품 페이지 업데이트',
+                '광고 소재 제작',
+                '재고 확인',
+            ],
+            'D-3': [
+                '프로모션 등록 (각 채널)',
+                '광고 집행 시작',
+                'SNS 홍보',
+            ],
+            'D-Day': [
+                '실시간 매출 모니터링',
+                '재고 관리',
+                'CS 대응',
+            ],
+        },
+        '한우데이 (9,19,29일)': {
+            'D-7': [
+                '한우데이 특가 상품 선정',
+                '한우 인증 마크 확인',
+                '상품 페이지 한우데이 배너 추가',
+                '예상 판매량 기반 재고 확보',
+            ],
+            'D-3': [
+                '프로모션 등록 (스마트스토어, 쿠팡 등)',
+                '광고 소재 제작 및 집행',
+                '한우데이 해시태그 이벤트 준비',
+            ],
+            'D-Day': [
+                '한우데이 프로모션 활성화',
+                '실시간 매출 모니터링',
+                '재고 소진시 품절 처리',
+                '다음 한우데이 (10일 후) 사전 예고',
+            ],
+        },
+    }
+
+    # 이벤트 유형 선택
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        event_type = st.selectbox("이벤트 유형", list(checklist_templates.keys()), key="checklist_type")
+    with col2:
+        event_name = st.text_input("이벤트명 (메모용)", value="", placeholder="예: 2024 설날 프로모션", key="checklist_name")
+
+    # 체크리스트 표시
+    template = checklist_templates[event_type]
+    checklist_key = f"{event_type}_{event_name}"
+
+    if checklist_key not in st.session_state.checklist_items:
+        st.session_state.checklist_items[checklist_key] = {day: {item: False for item in items} for day, items in template.items()}
+
+    st.markdown("---")
+
+    # D-Day 기준 색상
+    day_colors = {
+        'D-30': '#9b59b6',
+        'D-14': '#3498db',
+        'D-7': '#2ecc71',
+        'D-3': '#f39c12',
+        'D-Day': '#e74c3c',
+        'D+1': '#95a5a6',
+    }
+
+    # 진행률 계산
+    total_items = sum(len(items) for items in template.values())
+    checked_items = sum(
+        sum(1 for checked in st.session_state.checklist_items[checklist_key][day].values() if checked)
+        for day in template.keys()
+    )
+    progress = checked_items / total_items if total_items > 0 else 0
+
+    st.markdown(f"### 📊 전체 진행률: {progress * 100:.0f}%")
+    st.progress(progress)
+
+    # 단계별 체크리스트
+    for day, items in template.items():
+        color = day_colors.get(day, '#888')
+        day_checked = sum(1 for item in items if st.session_state.checklist_items[checklist_key][day].get(item, False))
+        day_total = len(items)
+        day_progress = day_checked / day_total if day_total > 0 else 0
+
+        with st.expander(f"📌 {day} ({day_checked}/{day_total} 완료)", expanded=(day_progress < 1)):
+            st.markdown(f"""
+            <div style="height:4px; background:{color}; border-radius:2px; margin-bottom:10px;"></div>
+            """, unsafe_allow_html=True)
+
+            for item in items:
+                checked = st.checkbox(
+                    item,
+                    value=st.session_state.checklist_items[checklist_key][day].get(item, False),
+                    key=f"check_{checklist_key}_{day}_{item}"
+                )
+                st.session_state.checklist_items[checklist_key][day][item] = checked
+
+    # 추가 체크리스트 항목
+    st.markdown("---")
+    st.markdown("### ➕ 항목 추가")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        add_day = st.selectbox("단계", list(template.keys()), key="add_day")
+    with col2:
+        new_item = st.text_input("새 항목", placeholder="추가할 체크리스트 항목", key="new_item")
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("➕ 추가", key="add_item"):
+            if new_item:
+                if add_day not in st.session_state.checklist_items[checklist_key]:
+                    st.session_state.checklist_items[checklist_key][add_day] = {}
+                st.session_state.checklist_items[checklist_key][add_day][new_item] = False
+                st.success(f"'{new_item}' 항목이 {add_day}에 추가되었습니다.")
+                st.rerun()
+
+    # 리셋 버튼
+    st.markdown("---")
+    if st.button("🔄 체크리스트 초기화", key="reset_checklist"):
+        st.session_state.checklist_items[checklist_key] = {day: {item: False for item in items} for day, items in template.items()}
+        st.success("체크리스트가 초기화되었습니다.")
+        st.rerun()
+
+
+def render_competitor_analysis(analyzer: OrderAnalyzer):
+    """경쟁사 분석"""
+    st.title("🔍 경쟁사 분석")
+    st.markdown("경쟁사 가격과 프로모션을 모니터링하고 전략을 수립하세요.")
+
+    # 세션 상태 초기화
+    if 'competitors' not in st.session_state:
+        st.session_state.competitors = []
+    if 'competitor_products' not in st.session_state:
+        st.session_state.competitor_products = []
+
+    # ===== 1. 경쟁사 등록 =====
+    st.markdown("### 🏢 1. 경쟁사 등록")
+
+    col1, col2, col3 = st.columns([2, 2, 1])
+    with col1:
+        new_competitor = st.text_input("경쟁사명", placeholder="예: ○○축산, △△정육", key="new_competitor")
+    with col2:
+        competitor_channels = st.multiselect(
+            "주요 판매 채널",
+            ['스마트스토어', '쿠팡', 'G마켓', '11번가', '카카오', '위메프', '티몬', '자사몰', '기타'],
+            key="competitor_channels"
+        )
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("➕ 등록", key="add_competitor"):
+            if new_competitor:
+                st.session_state.competitors.append({
+                    'name': new_competitor,
+                    'channels': competitor_channels
+                })
+                st.success(f"'{new_competitor}' 경쟁사가 등록되었습니다.")
+                st.rerun()
+
+    # 등록된 경쟁사 목록
+    if st.session_state.competitors:
+        st.markdown("#### 📋 등록된 경쟁사")
+        for i, comp in enumerate(st.session_state.competitors):
+            col1, col2, col3 = st.columns([3, 3, 1])
+            with col1:
+                st.write(f"**{comp['name']}**")
+            with col2:
+                st.write(", ".join(comp['channels']) if comp['channels'] else "채널 미등록")
+            with col3:
+                if st.button("🗑️", key=f"del_comp_{i}"):
+                    st.session_state.competitors.pop(i)
+                    st.rerun()
+
+    st.markdown("---")
+
+    # ===== 2. 상품별 가격 비교 =====
+    st.markdown("### 💵 2. 상품별 가격 비교")
+
+    if not st.session_state.competitors:
+        st.info("먼저 경쟁사를 등록해주세요.")
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            product_name = st.text_input("상품명", placeholder="예: 한우 등심 1++", key="price_product")
+        with col2:
+            my_price = st.number_input("우리 가격 (원)", min_value=0, step=1000, value=0, key="my_price")
+        with col3:
+            competitor_select = st.selectbox(
+                "경쟁사",
+                [c['name'] for c in st.session_state.competitors],
+                key="price_competitor"
+            )
+        with col4:
+            competitor_price = st.number_input("경쟁사 가격 (원)", min_value=0, step=1000, value=0, key="competitor_price")
+
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("📊 가격 추가", key="add_price"):
+                if product_name and my_price > 0 and competitor_price > 0:
+                    st.session_state.competitor_products.append({
+                        'product': product_name,
+                        'my_price': my_price,
+                        'competitor': competitor_select,
+                        'competitor_price': competitor_price,
+                        'diff': my_price - competitor_price,
+                        'diff_rate': ((my_price - competitor_price) / competitor_price * 100) if competitor_price > 0 else 0,
+                        'date': datetime.now().strftime('%Y-%m-%d')
+                    })
+                    st.success("가격 정보가 추가되었습니다.")
+                    st.rerun()
+
+        # 가격 비교 테이블
+        if st.session_state.competitor_products:
+            st.markdown("#### 📈 가격 비교 현황")
+
+            price_df = pd.DataFrame(st.session_state.competitor_products)
+
+            # 가격 경쟁력 색상
+            def price_color(row):
+                if row['diff'] < 0:
+                    return '🟢 저렴'  # 우리가 저렴
+                elif row['diff'] == 0:
+                    return '🟡 동일'
+                else:
+                    return '🔴 비쌈'  # 우리가 비쌈
+
+            price_df['경쟁력'] = price_df.apply(price_color, axis=1)
+
+            st.dataframe(
+                price_df[['date', 'product', 'my_price', 'competitor', 'competitor_price', 'diff', 'diff_rate', '경쟁력']].rename(columns={
+                    'date': '조사일',
+                    'product': '상품명',
+                    'my_price': '우리가격',
+                    'competitor': '경쟁사',
+                    'competitor_price': '경쟁사가격',
+                    'diff': '가격차이',
+                    'diff_rate': '차이율(%)'
+                }).style.format({
+                    '우리가격': '{:,}원',
+                    '경쟁사가격': '{:,}원',
+                    '가격차이': '{:+,}원',
+                    '차이율(%)': '{:+.1f}%'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # 요약 분석
+            st.markdown("#### 💡 가격 경쟁력 분석")
+            cheaper = len(price_df[price_df['diff'] < 0])
+            same = len(price_df[price_df['diff'] == 0])
+            expensive = len(price_df[price_df['diff'] > 0])
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🟢 우리가 저렴", f"{cheaper}개 상품")
+            with col2:
+                st.metric("🟡 가격 동일", f"{same}개 상품")
+            with col3:
+                st.metric("🔴 우리가 비쌈", f"{expensive}개 상품")
+
+            if expensive > 0:
+                expensive_products = price_df[price_df['diff'] > 0].sort_values('diff', ascending=False)
+                st.warning(f"⚠️ 가격 경쟁력 보완 필요: {', '.join(expensive_products['product'].head(3).tolist())}")
+
+                render_insight(
+                    "가격 대응 전략",
+                    "1) 가격 인하가 어려우면 구성 변경(증량, 사은품)으로 가치 제안\n"
+                    "2) 프리미엄 포지셔닝 강화 (품질, 원산지, 등급 강조)\n"
+                    "3) 묶음 할인으로 객단가 유지하면서 경쟁력 확보",
+                    "warning"
+                )
+
+    st.markdown("---")
+
+    # ===== 3. 경쟁사 프로모션 모니터링 =====
+    st.markdown("### 📢 3. 경쟁사 프로모션 모니터링")
+
+    if 'competitor_promos' not in st.session_state:
+        st.session_state.competitor_promos = []
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        promo_competitor = st.selectbox(
+            "경쟁사",
+            [c['name'] for c in st.session_state.competitors] if st.session_state.competitors else ['(경쟁사 먼저 등록)'],
+            key="promo_competitor"
+        )
+    with col2:
+        promo_type = st.selectbox("프로모션 유형", ['할인', '쿠폰', '적립금', '증정', '무료배송', '기타'], key="promo_type")
+    with col3:
+        promo_detail = st.text_input("프로모션 내용", placeholder="예: 전품목 20% 할인", key="promo_detail")
+    with col4:
+        promo_channel = st.selectbox("채널", ['스마트스토어', '쿠팡', 'G마켓', '11번가', '카카오', '기타'], key="promo_channel")
+
+    if st.button("📌 프로모션 기록", key="add_promo_record"):
+        if promo_competitor and promo_detail:
+            st.session_state.competitor_promos.append({
+                'date': datetime.now().strftime('%Y-%m-%d'),
+                'competitor': promo_competitor,
+                'type': promo_type,
+                'detail': promo_detail,
+                'channel': promo_channel
+            })
+            st.success("경쟁사 프로모션이 기록되었습니다.")
+            st.rerun()
+
+    if st.session_state.competitor_promos:
+        st.markdown("#### 📋 경쟁사 프로모션 기록")
+        promo_df = pd.DataFrame(st.session_state.competitor_promos)
+        promo_df = promo_df.sort_values('date', ascending=False)
+        promo_df.columns = ['날짜', '경쟁사', '유형', '내용', '채널']
+        st.dataframe(promo_df, use_container_width=True, hide_index=True)
+
+        # 프로모션 유형 분석
+        st.markdown("#### 📊 경쟁사 프로모션 패턴")
+        type_counts = pd.DataFrame(st.session_state.competitor_promos)['type'].value_counts()
+        fig = px.pie(values=type_counts.values, names=type_counts.index, title="프로모션 유형 분포")
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # ===== 4. 대응 전략 제안 =====
+    st.markdown("### 🎯 4. 대응 전략 제안")
+
+    if st.session_state.competitor_products or st.session_state.competitor_promos:
+        strategies = []
+
+        # 가격 기반 전략
+        if st.session_state.competitor_products:
+            price_df = pd.DataFrame(st.session_state.competitor_products)
+            avg_diff_rate = price_df['diff_rate'].mean()
+
+            if avg_diff_rate > 10:
+                strategies.append({
+                    'title': '가격 경쟁력 강화 필요',
+                    'detail': '평균적으로 경쟁사 대비 10% 이상 비쌉니다. 원가 절감, 마진 조정, 또는 가치 제안 강화가 필요합니다.',
+                    'type': 'warning'
+                })
+            elif avg_diff_rate < -10:
+                strategies.append({
+                    'title': '가격 경쟁력 우위',
+                    'detail': '가격 경쟁력이 있습니다. 이를 마케팅 포인트로 적극 활용하세요. "최저가 보장" 등의 문구 활용을 권장합니다.',
+                    'type': 'info'
+                })
+
+        # 프로모션 기반 전략
+        if st.session_state.competitor_promos:
+            promo_df = pd.DataFrame(st.session_state.competitor_promos)
+            recent_promos = promo_df[promo_df['date'] >= (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')]
+
+            if len(recent_promos) > 3:
+                strategies.append({
+                    'title': '경쟁 심화 대응',
+                    'detail': f'최근 7일간 {len(recent_promos)}건의 경쟁사 프로모션이 감지되었습니다. 차별화된 프로모션 또는 고객 충성도 강화 전략이 필요합니다.',
+                    'type': 'warning'
+                })
+
+            # 할인 프로모션이 많으면
+            discount_count = len(promo_df[promo_df['type'] == '할인'])
+            if discount_count > len(promo_df) * 0.5:
+                strategies.append({
+                    'title': '가격 경쟁 회피 전략',
+                    'detail': '경쟁사들이 가격 할인 위주로 프로모션하고 있습니다. 가격 경쟁 대신 품질/서비스 차별화(빠른배송, 친절CS, 품질보증)로 포지셔닝하세요.',
+                    'type': 'info'
+                })
+
+        if strategies:
+            for strategy in strategies:
+                render_insight(strategy['title'], strategy['detail'], strategy['type'])
+        else:
+            st.info("더 많은 경쟁사 데이터를 수집하면 전략 제안이 가능합니다.")
+    else:
+        st.info("경쟁사 가격 또는 프로모션 데이터를 입력하면 대응 전략을 제안해드립니다.")
 
 
 if __name__ == "__main__":
