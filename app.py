@@ -1328,50 +1328,61 @@ def render_dashboard(analyzer: OrderAnalyzer):
     with promo_tabs[0]:
         st.markdown('<span class="date-basis">💡 주문 패턴 기반 광고/프로모션 타이밍 추천</span>', unsafe_allow_html=True)
 
-        # 전체 시간대별 추천
-        hourly_all, _ = analyze_hourly_pattern(revenue_df)
-        time_recommendations = generate_time_promotion_recommendations(hourly_all, "전체")
+        # 사업장 선택
+        time_biz_options = ["전체", "육구이", "우주인"]
+        time_biz_tabs = st.tabs(time_biz_options)
 
-        if time_recommendations:
-            for rec in time_recommendations:
-                if rec['type'] == 'peak':
-                    st.markdown(f"""
-                    <div style="background:linear-gradient(135deg, #e8f5e9, #f1f8e9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #4caf50;">
-                        <div style="font-weight:bold; color:#2e7d32; font-size:16px;">🎯 {rec['title']}</div>
-                        <div style="color:#555; margin:8px 0;">
-                            <b>시간대:</b> {rec['time']}<br>
-                            <b>전략:</b> {rec['strategy']}<br>
-                            <b>상세:</b> {rec['detail']}<br>
-                            <b>추천 광고:</b> {rec['ad_type']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                elif rec['type'] == 'opportunity':
-                    st.markdown(f"""
-                    <div style="background:linear-gradient(135deg, #fff3e0, #ffe0b2); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #ff9800;">
-                        <div style="font-weight:bold; color:#e65100; font-size:16px;">💡 {rec['title']}</div>
-                        <div style="color:#555; margin:8px 0;">
-                            <b>시간대:</b> {rec['time']}<br>
-                            <b>전략:</b> {rec['strategy']}<br>
-                            <b>상세:</b> {rec['detail']}<br>
-                            <b>추천 광고:</b> {rec['ad_type']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                elif rec['type'] == 'timing':
-                    st.markdown(f"""
-                    <div style="background:linear-gradient(135deg, #e3f2fd, #bbdefb); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #2196f3;">
-                        <div style="font-weight:bold; color:#1565c0; font-size:16px;">⏱️ {rec['title']}</div>
-                        <div style="color:#555; margin:8px 0;">
-                            <b>타이밍:</b> {rec['time']}<br>
-                            <b>전략:</b> {rec['strategy']}<br>
-                            <b>상세:</b> {rec['detail']}<br>
-                            <b>추천 광고:</b> {rec['ad_type']}
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+        def render_time_recommendations(hourly_data, biz_name, biz_color):
+            """시간대별 추천 렌더링"""
+            time_recommendations = generate_time_promotion_recommendations(hourly_data, biz_name)
 
-            # 사업장별 차이점
+            if time_recommendations:
+                for rec in time_recommendations:
+                    if rec['type'] == 'peak':
+                        st.markdown(f"""
+                        <div style="background:linear-gradient(135deg, #e8f5e9, #f1f8e9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
+                            <div style="font-weight:bold; color:#2e7d32; font-size:16px;">🎯 [{biz_name}] {rec['title']}</div>
+                            <div style="color:#555; margin:8px 0;">
+                                <b>시간대:</b> {rec['time']}<br>
+                                <b>전략:</b> {rec['strategy']}<br>
+                                <b>상세:</b> {rec['detail']}<br>
+                                <b>추천 광고:</b> {rec['ad_type']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    elif rec['type'] == 'opportunity':
+                        st.markdown(f"""
+                        <div style="background:linear-gradient(135deg, #fff3e0, #ffe0b2); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #ff9800;">
+                            <div style="font-weight:bold; color:#e65100; font-size:16px;">💡 [{biz_name}] {rec['title']}</div>
+                            <div style="color:#555; margin:8px 0;">
+                                <b>시간대:</b> {rec['time']}<br>
+                                <b>전략:</b> {rec['strategy']}<br>
+                                <b>상세:</b> {rec['detail']}<br>
+                                <b>추천 광고:</b> {rec['ad_type']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    elif rec['type'] == 'timing':
+                        st.markdown(f"""
+                        <div style="background:linear-gradient(135deg, #e3f2fd, #bbdefb); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
+                            <div style="font-weight:bold; color:#1565c0; font-size:16px;">⏱️ [{biz_name}] {rec['title']}</div>
+                            <div style="color:#555; margin:8px 0;">
+                                <b>타이밍:</b> {rec['time']}<br>
+                                <b>전략:</b> {rec['strategy']}<br>
+                                <b>상세:</b> {rec['detail']}<br>
+                                <b>추천 광고:</b> {rec['ad_type']}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info(f"{biz_name} 시간대별 데이터가 부족합니다.")
+
+        # 전체 탭
+        with time_biz_tabs[0]:
+            hourly_all, _ = analyze_hourly_pattern(revenue_df)
+            render_time_recommendations(hourly_all, "전체", "#9b59b6")
+
+            # 사업장별 피크 시간 비교
             hourly_육구이, _ = analyze_hourly_pattern(analyzer.filter_by_business('육구이', revenue_df))
             hourly_우주인, _ = analyze_hourly_pattern(analyzer.filter_by_business('우주인', revenue_df))
 
@@ -1379,19 +1390,56 @@ def render_dashboard(analyzer: OrderAnalyzer):
                 peak_육구이 = hourly_육구이.loc[hourly_육구이['금액'].idxmax()]['시간대']
                 peak_우주인 = hourly_우주인.loc[hourly_우주인['금액'].idxmax()]['시간대']
 
-                if peak_육구이 != peak_우주인:
-                    st.markdown(f"""
-                    <div style="background:linear-gradient(135deg, #fce4ec, #f8bbd9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #e91e63;">
-                        <div style="font-weight:bold; color:#c2185b; font-size:16px;">🔍 사업장별 피크 시간 차이</div>
-                        <div style="color:#555; margin:8px 0;">
-                            <b>육구이:</b> {peak_육구이} 피크 → 해당 시간에 육구이 상품 집중 노출<br>
-                            <b>우주인:</b> {peak_우주인} 피크 → 해당 시간에 우주인 상품 집중 노출<br>
-                            <b>전략:</b> 사업장별 타겟 고객층이 다르므로 광고 시간대를 분리 운영하세요.
-                        </div>
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg, #fce4ec, #f8bbd9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #e91e63;">
+                    <div style="font-weight:bold; color:#c2185b; font-size:16px;">🔍 사업장별 피크 시간 비교</div>
+                    <div style="color:#555; margin:8px 0;">
+                        <b>🥩 육구이:</b> {peak_육구이} 피크<br>
+                        <b>🚀 우주인:</b> {peak_우주인} 피크<br>
+                        <b>💡 전략:</b> {'피크 시간이 다르므로 광고 시간대를 분리 운영하세요.' if peak_육구이 != peak_우주인 else '피크 시간이 같으므로 해당 시간대에 집중 광고하세요.'}
                     </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.info("시간대별 데이터가 부족합니다. 더 많은 데이터를 업로드하면 추천이 생성됩니다.")
+                </div>
+                """, unsafe_allow_html=True)
+
+        # 육구이 탭
+        with time_biz_tabs[1]:
+            hourly_육구이, _ = analyze_hourly_pattern(analyzer.filter_by_business('육구이', revenue_df))
+            if hourly_육구이 is not None and len(hourly_육구이) > 0:
+                render_time_recommendations(hourly_육구이, "육구이", "#FF6B6B")
+
+                # 육구이 특화 전략
+                st.markdown("""
+                <div style="background:linear-gradient(135deg, #FFE5E5, #FFF5F5); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #FF6B6B;">
+                    <div style="font-weight:bold; color:#c0392b; font-size:16px;">🥩 육구이 특화 전략</div>
+                    <div style="color:#555; margin:8px 0;">
+                        <b>타겟 고객:</b> 프리미엄 한우 선호 고객, 선물용 구매자<br>
+                        <b>추천 상품:</b> 한우 등급별 세트, 프리미엄 선물세트<br>
+                        <b>광고 메시지:</b> "1++ 한우", "농장직송", "신선함"을 강조
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("육구이 시간대별 데이터가 없습니다.")
+
+        # 우주인 탭
+        with time_biz_tabs[2]:
+            hourly_우주인, _ = analyze_hourly_pattern(analyzer.filter_by_business('우주인', revenue_df))
+            if hourly_우주인 is not None and len(hourly_우주인) > 0:
+                render_time_recommendations(hourly_우주인, "우주인", "#4ECDC4")
+
+                # 우주인 특화 전략
+                st.markdown("""
+                <div style="background:linear-gradient(135deg, #E5F9F6, #F5FFFD); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #4ECDC4;">
+                    <div style="font-weight:bold; color:#16a085; font-size:16px;">🚀 우주인 특화 전략</div>
+                    <div style="color:#555; margin:8px 0;">
+                        <b>타겟 고객:</b> 가성비 중시 고객, 대용량 구매자<br>
+                        <b>추천 상품:</b> 실속형 세트, 대용량 팩, 가정용 구이세트<br>
+                        <b>광고 메시지:</b> "가성비", "대용량 할인", "가족용"을 강조
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("우주인 시간대별 데이터가 없습니다.")
 
     with promo_tabs[1]:
         st.markdown('<span class="date-basis">💡 축산물 시즌별 마케팅 전략</span>', unsafe_allow_html=True)
