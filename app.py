@@ -876,9 +876,11 @@ def render_date_filter(analyzer: OrderAnalyzer, key_prefix: str = "", default_mo
     min_dt = min_date.date() if hasattr(min_date, 'date') else min_date
     max_dt = max_date.date() if hasattr(max_date, 'date') else max_date
 
-    start_key = f"{key_prefix}_filter_start"
-    end_key = f"{key_prefix}_filter_end"
+    # 위젯 키와 세션 상태 키 통일
+    start_key = f"{key_prefix}_date_start"
+    end_key = f"{key_prefix}_date_end"
 
+    # 초기값 설정
     if start_key not in st.session_state:
         if default_mode == "당월":
             month_start = max_dt.replace(day=1)
@@ -888,17 +890,8 @@ def render_date_filter(analyzer: OrderAnalyzer, key_prefix: str = "", default_mo
     if end_key not in st.session_state:
         st.session_state[end_key] = max_dt
 
+    # 버튼 클릭 처리 (date_input 렌더링 전에 처리)
     col1, col2, col3 = st.columns([1, 1, 2])
-
-    with col1:
-        start = st.date_input("시작일", value=st.session_state[start_key],
-                              min_value=min_dt, max_value=max_dt, key=f"{key_prefix}_date_start")
-        st.session_state[start_key] = start
-
-    with col2:
-        end = st.date_input("종료일", value=st.session_state[end_key],
-                            min_value=min_dt, max_value=max_dt, key=f"{key_prefix}_date_end")
-        st.session_state[end_key] = end
 
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -929,6 +922,12 @@ def render_date_filter(analyzer: OrderAnalyzer, key_prefix: str = "", default_mo
                 st.session_state[start_key] = min_dt
                 st.session_state[end_key] = max_dt
                 st.rerun()
+
+    with col1:
+        start = st.date_input("시작일", min_value=min_dt, max_value=max_dt, key=start_key)
+
+    with col2:
+        end = st.date_input("종료일", min_value=min_dt, max_value=max_dt, key=end_key)
 
     return start, end
 
