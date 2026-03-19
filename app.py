@@ -468,29 +468,79 @@ def generate_seasonal_recommendations(df, biz_name="전체"):
 
     recommendations = []
 
-    # 축산물 계절별 추천 (하드코딩된 전문가 지식)
-    season_strategies = {
-        '봄': {
-            'products': '나들이용 도시락 세트, 캠핑용 양념육, 피크닉 밀키트',
-            'events': '벚꽃시즌, 어린이날, 어버이날',
-            'strategy': '야외활동 증가에 맞춘 휴대 간편 상품 강화'
-        },
-        '여름': {
-            'products': '삼겹살, 목살, 캠핑용 숯불구이 세트, 냉동 보관 대용량',
-            'events': '휴가철, 복날, 캠핑시즌',
-            'strategy': 'BBQ/캠핑 시즌 마케팅, 복날 특수 (삼계탕용, 보양식)'
-        },
-        '가을': {
-            'products': '프리미엄 한우, 선물세트, 구이용 고급 부위',
-            'events': '추석, 김장철',
-            'strategy': '명절 선물세트 사전예약, 프리미엄 라인업 강화'
-        },
-        '겨울': {
-            'products': '국거리, 찌개용, 샤브샤브, 설 선물세트',
-            'events': '설날, 연말연시, 크리스마스',
-            'strategy': '따뜻한 국물요리 수요 공략, 설 선물세트 마케팅'
+    # 사업장별 계절 전략
+    if biz_name == '육구이':
+        # 육구이: 신선함 강조, 한돈/내장 취급, 평달 단품 매출 중요
+        season_strategies = {
+            '봄': {
+                'products': '캠핑용 삼겹살/목살, 한돈 양념구이, 신선 내장(등골, 막창)',
+                'events': '벚꽃시즌, 어린이날, 어버이날, 삼삼데이',
+                'strategy': '🥩 캠핑/나들이 시즌 - 한돈 양념육 + 신선내장 세트 구성'
+            },
+            '여름': {
+                'products': '삼겹살, 목살, 항정살, 신선 등골/막창, 캠핑 BBQ세트',
+                'events': '휴가철, 복날, 캠핑시즌',
+                'strategy': '🥩 복날 특수 + 캠핑 시즌, 신선내장 타임특가로 차별화'
+            },
+            '가을': {
+                'products': '한우 선물세트 + 한돈 실속세트, 내장 마니아 세트',
+                'events': '추석, 김장철, 한우데이',
+                'strategy': '🥩 추석 선물세트 + 평달 인기 단품 묶음 구성으로 객단가 UP'
+            },
+            '겨울': {
+                'products': '곰탕/설렁탕용, 국거리, 설 선물세트, 신선 내장',
+                'events': '설날, 연말연시, 크리스마스',
+                'strategy': '🥩 설 선물세트 + 국물요리용 단품 크로스셀링'
+            }
         }
-    }
+    elif biz_name == '우주인':
+        # 우주인: 프리미엄 선물세트 전문, 명절 집중, 고급 이미지
+        season_strategies = {
+            '봄': {
+                'products': '프리미엄 한우 스테이크, 어버이날 감사 선물세트',
+                'events': '어버이날, 스승의날',
+                'strategy': '🚀 VIP 고객 유지 + 기업 대량구매 영업, 프리미엄 이미지 유지'
+            },
+            '여름': {
+                'products': '프리미엄 한우 구이세트 (소량), VIP 단품',
+                'events': '휴가철, 복날',
+                'strategy': '🚀 비수기 - 프리미엄 소량 상품으로 VIP 고객 유지, 추석 사전예약 준비'
+            },
+            '가을': {
+                'products': '프리미엄 한우 선물세트 (추석 대목!), 1++ 등심/채끝 세트',
+                'events': '추석 (연매출 최대 대목)',
+                'strategy': '🚀 ★추석 올인★ 사전예약 필수, 고급 포장 강조, 기업 대량구매 공략'
+            },
+            '겨울': {
+                'products': '설 프리미엄 선물세트, VIP 한우 세트',
+                'events': '설날, 연말연시 (연매출 최대 대목)',
+                'strategy': '🚀 ★설날 올인★ 추석과 함께 연매출 핵심! 고급 이미지 극대화'
+            }
+        }
+    else:
+        # 전체 (일반 전략)
+        season_strategies = {
+            '봄': {
+                'products': '나들이용 도시락 세트, 캠핑용 양념육, 피크닉 밀키트',
+                'events': '벚꽃시즌, 어린이날, 어버이날',
+                'strategy': '야외활동 증가에 맞춘 휴대 간편 상품 강화'
+            },
+            '여름': {
+                'products': '삼겹살, 목살, 캠핑용 숯불구이 세트, 냉동 보관 대용량',
+                'events': '휴가철, 복날, 캠핑시즌',
+                'strategy': 'BBQ/캠핑 시즌 마케팅, 복날 특수 (삼계탕용, 보양식)'
+            },
+            '가을': {
+                'products': '프리미엄 한우, 선물세트, 구이용 고급 부위',
+                'events': '추석, 김장철',
+                'strategy': '명절 선물세트 사전예약, 프리미엄 라인업 강화'
+            },
+            '겨울': {
+                'products': '국거리, 찌개용, 샤브샤브, 설 선물세트',
+                'events': '설날, 연말연시, 크리스마스',
+                'strategy': '따뜻한 국물요리 수요 공략, 설 선물세트 마케팅'
+            }
+        }
 
     # 현재 월 확인
     current_month = datetime.now().month
@@ -1321,11 +1371,18 @@ def render_dashboard(analyzer: OrderAnalyzer):
             if selected_biz == '육구이':
                 st.markdown("""
                 <div style="background:linear-gradient(135deg, #FFE5E5, #FFF5F5); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #FF6B6B;">
-                    <div style="font-weight:bold; color:#c0392b; font-size:16px;">🥩 육구이 특화 전략</div>
+                    <div style="font-weight:bold; color:#c0392b; font-size:16px;">🥩 육구이 (도축장집아들들) 특화 전략</div>
                     <div style="color:#555; margin:8px 0;">
-                        <b>타겟 고객:</b> 프리미엄 한우 선호 고객, 선물용 구매자<br>
-                        <b>추천 상품:</b> 한우 등급별 세트, 프리미엄 선물세트<br>
-                        <b>광고 메시지:</b> "1++ 한우", "농장직송", "신선함"을 강조
+                        <b>브랜드 이미지:</b> 신선함 · 친근함 · 도축장 직송<br>
+                        <b>타겟 고객:</b> 신선한 고기를 원하는 고객, 내장류 마니아, 평달 단품 구매자<br>
+                        <b>주력 상품:</b> 한우/한돈 단품, 등골·내장류, 명절 선물세트<br>
+                        <b>차별점:</b> 도축장 직송으로 신선도 극대화 → 쉽게 부패하는 내장류 취급 가능<br>
+                        <b>광고 메시지:</b> "도축장 직송", "오늘 잡은 고기", "신선내장 전문", "한돈도 있어요"
+                    </div>
+                    <div style="background:#fff; padding:10px; border-radius:6px; margin-top:10px;">
+                        <b>💡 시즌별 전략:</b><br>
+                        • <b>평달:</b> 단품 매출 강조, 내장류 타임특가, 한돈 프로모션<br>
+                        • <b>명절:</b> 선물세트 + 평소 인기 단품 묶음 구성
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1334,9 +1391,16 @@ def render_dashboard(analyzer: OrderAnalyzer):
                 <div style="background:linear-gradient(135deg, #E5F9F6, #F5FFFD); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #4ECDC4;">
                     <div style="font-weight:bold; color:#16a085; font-size:16px;">🚀 우주인 특화 전략</div>
                     <div style="color:#555; margin:8px 0;">
-                        <b>타겟 고객:</b> 가성비 중시 고객, 대용량 구매자<br>
-                        <b>추천 상품:</b> 실속형 세트, 대용량 팩, 가정용 구이세트<br>
-                        <b>광고 메시지:</b> "가성비", "대용량 할인", "가족용"을 강조
+                        <b>브랜드 이미지:</b> 프리미엄 · 고급스러움 · 선물 전문<br>
+                        <b>타겟 고객:</b> 고급 선물세트 구매자, 품격있는 선물을 원하는 고객<br>
+                        <b>주력 상품:</b> 프리미엄 한우 선물세트 (명절 시즌 집중)<br>
+                        <b>차별점:</b> 고급 포장 · 프리미엄 이미지 → 받는 분이 감동하는 선물<br>
+                        <b>광고 메시지:</b> "프리미엄 한우", "격이 다른 선물", "고급 포장", "VIP 선물"
+                    </div>
+                    <div style="background:#fff; padding:10px; border-radius:6px; margin-top:10px;">
+                        <b>💡 시즌별 전략:</b><br>
+                        • <b>명절 (설/추석):</b> 연매출 대부분 집중! 사전예약 필수, 고급 이미지 극대화<br>
+                        • <b>평달:</b> VIP 고객 유지, 기업 대량 구매 타겟, 프리미엄 단품 소량 운영
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
