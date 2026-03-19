@@ -1054,6 +1054,37 @@ def render_dashboard(analyzer: OrderAnalyzer):
         return
 
     st.caption(f"📊 조회: {start} ~ {end}")
+
+    # 사업장 선택 (상단에 하나만)
+    st.markdown("### 🏢 사업장 선택")
+    biz_col1, biz_col2, biz_col3 = st.columns(3)
+    if 'selected_business' not in st.session_state:
+        st.session_state.selected_business = '전체'
+
+    with biz_col1:
+        if st.button("📊 전체", key="biz_all", use_container_width=True,
+                     type="primary" if st.session_state.selected_business == '전체' else "secondary"):
+            st.session_state.selected_business = '전체'
+            st.rerun()
+    with biz_col2:
+        if st.button("🥩 육구이", key="biz_yukgui", use_container_width=True,
+                     type="primary" if st.session_state.selected_business == '육구이' else "secondary"):
+            st.session_state.selected_business = '육구이'
+            st.rerun()
+    with biz_col3:
+        if st.button("🚀 우주인", key="biz_woojuin", use_container_width=True,
+                     type="primary" if st.session_state.selected_business == '우주인' else "secondary"):
+            st.session_state.selected_business = '우주인'
+            st.rerun()
+
+    selected_biz = st.session_state.selected_business
+    biz_color = BUSINESS_COLORS.get(selected_biz, '#9b59b6')
+
+    # 선택된 사업장으로 데이터 필터링
+    if selected_biz != '전체':
+        revenue_df = analyzer.filter_by_business(selected_biz, revenue_df)
+        shipment_df = analyzer.filter_by_business(selected_biz, shipment_df)
+
     st.markdown("---")
 
     rev_stats = analyzer.get_summary_stats(revenue_df) if revenue_df is not None else {'총 매출': 0, '판매건수': 0, '판매수량': 0, '취소건수': 0, '취소율': 0}
@@ -1172,152 +1203,68 @@ def render_dashboard(analyzer: OrderAnalyzer):
 
     # 요일별 패턴
     st.markdown("---")
-    st.markdown("### 📅 요일별 패턴")
+    st.markdown(f"### 📅 요일별 패턴 {'(' + selected_biz + ')' if selected_biz != '전체' else ''}")
     st.markdown('<span class="date-basis">💰 매출/주문: 결제완료일 기준</span> <span class="date-basis">📦 출고: 출고완료일 기준</span>', unsafe_allow_html=True)
 
-    # 사업장별 요일 패턴
-    weekday_rev_biz, _ = analyze_weekday_pattern_revenue(revenue_df, by_business=True)
-    weekday_ship_biz, _ = analyze_weekday_pattern_shipment(shipment_df, by_business=True)
+    col1, col2 = st.columns(2)
 
-    biz_tabs = st.tabs(["🥩 육구이", "🚀 우주인", "📊 전체"])
+    with col1:
+        weekday_rev, rev_insight = analyze_weekday_pattern_revenue(revenue_df)
+        if weekday_rev is not None and len(weekday_rev) > 0:
+            fig = px.bar(weekday_rev, x='요일명', y='금액', text=weekday_rev['금액'].apply(lambda x: f'{x:,}'),
+                         color_discrete_sequence=[biz_color])
+            fig.update_traces(textposition='outside')
+            fig.update_layout(height=280, title=f"💰 요일별 매출", xaxis_title="", yaxis_title="")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("매출 데이터가 없습니다.")
 
-    for tab_idx, (tab, biz_name) in enumerate(zip(biz_tabs, ['육구이', '우주인', '전체'])):
-        with tab:
-            col1, col2 = st.columns(2)
+    with col2:
+        weekday_ship, ship_insight = analyze_weekday_pattern_shipment(shipment_df)
+        if weekday_ship is not None and len(weekday_ship) > 0:
+            fig = px.bar(weekday_ship, x='요일명', y='출고수량', text='출고수량',
+                         color_discrete_sequence=[biz_color])
+            fig.update_traces(textposition='outside')
+            fig.update_layout(height=280, title="📦 요일별 출고", xaxis_title="", yaxis_title="")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("출고 데이터가 없습니다.")
 
-            with col1:
-                if biz_name == '전체':
-                    weekday_rev, _ = analyze_weekday_pattern_revenue(revenue_df)
-                    if weekday_rev is not None and len(weekday_rev) > 0:
-                        fig = px.bar(weekday_rev, x='요일명', y='금액', text=weekday_rev['금액'].apply(lambda x: f'{x:,}'),
-                                     color_discrete_sequence=['#3498db'])
-                        fig.update_traces(textposition='outside')
-                        fig.update_layout(height=280, title="💰 요일별 매출", xaxis_title="", yaxis_title="")
-                        st.plotly_chart(fig, use_container_width=True)
-                else:
-                    if weekday_rev_biz is not None:
-                        biz_data = weekday_rev_biz[weekday_rev_biz['사업장'] == biz_name]
-                        if len(biz_data) > 0:
-                            fig = px.bar(biz_data, x='요일명', y='금액', text=biz_data['금액'].apply(lambda x: f'{x:,}'),
-                                         color_discrete_sequence=[BUSINESS_COLORS.get(biz_name, '#3498db')])
-                            fig.update_traces(textposition='outside')
-                            fig.update_layout(height=280, title=f"💰 {biz_name} 요일별 매출", xaxis_title="", yaxis_title="")
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.info(f"{biz_name} 매출 데이터가 없습니다.")
-
-            with col2:
-                if biz_name == '전체':
-                    weekday_ship, _ = analyze_weekday_pattern_shipment(shipment_df)
-                    if weekday_ship is not None and len(weekday_ship) > 0:
-                        fig = px.bar(weekday_ship, x='요일명', y='출고수량', text='출고수량',
-                                     color_discrete_sequence=['#2ecc71'])
-                        fig.update_traces(textposition='outside')
-                        fig.update_layout(height=280, title="📦 요일별 출고", xaxis_title="", yaxis_title="")
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.info("출고 데이터가 없습니다.")
-                else:
-                    if weekday_ship_biz is not None:
-                        biz_ship_data = weekday_ship_biz[weekday_ship_biz['사업장'] == biz_name]
-                        if len(biz_ship_data) > 0:
-                            fig = px.bar(biz_ship_data, x='요일명', y='출고수량', text='출고수량',
-                                         color_discrete_sequence=[BUSINESS_COLORS.get(biz_name, '#2ecc71')])
-                            fig.update_traces(textposition='outside')
-                            fig.update_layout(height=280, title=f"📦 {biz_name} 요일별 출고", xaxis_title="", yaxis_title="")
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.info(f"{biz_name} 출고 데이터가 없습니다.")
-
-            # 각 탭별 인사이트
-            if biz_name == '전체':
-                _, rev_insight = analyze_weekday_pattern_revenue(revenue_df)
-                _, ship_insight = analyze_weekday_pattern_shipment(shipment_df)
-                if rev_insight:
-                    render_insight("전체 요일별 주문 패턴", rev_insight, "info")
-                if ship_insight:
-                    render_insight("전체 요일별 출고 패턴", ship_insight, "info")
-            else:
-                # 사업장별 인사이트 생성
-                if weekday_rev_biz is not None:
-                    biz_rev_data = weekday_rev_biz[weekday_rev_biz['사업장'] == biz_name]
-                    if len(biz_rev_data) > 0:
-                        best_rev_day = biz_rev_data.loc[biz_rev_data['금액'].idxmax()]
-                        worst_rev_day = biz_rev_data.loc[biz_rev_data['금액'].idxmin()]
-                        rev_insight = f"{biz_name} 주문이 가장 많은 요일은 {best_rev_day['요일명']}요일({best_rev_day['금액']:,}원)이고, 가장 적은 요일은 {worst_rev_day['요일명']}요일({worst_rev_day['금액']:,}원)입니다."
-                        render_insight(f"{biz_name} 요일별 주문 패턴", rev_insight, "info")
-
-                if weekday_ship_biz is not None:
-                    biz_ship_data = weekday_ship_biz[weekday_ship_biz['사업장'] == biz_name]
-                    if len(biz_ship_data) > 0:
-                        best_ship_day = biz_ship_data.loc[biz_ship_data['출고수량'].idxmax()]
-                        weekend_ship = biz_ship_data[biz_ship_data['요일'].isin([5, 6])]['출고수량'].sum()
-                        if weekend_ship == 0:
-                            ship_insight = f"{biz_name} 출고가 가장 많은 요일은 {best_ship_day['요일명']}요일({best_ship_day['출고수량']:,}개)입니다. 주말에는 출고가 없습니다."
-                        else:
-                            ship_insight = f"{biz_name} 출고가 가장 많은 요일은 {best_ship_day['요일명']}요일({best_ship_day['출고수량']:,}개)입니다."
-                        render_insight(f"{biz_name} 요일별 출고 패턴", ship_insight, "info")
+    # 인사이트
+    if rev_insight:
+        render_insight(f"{selected_biz} 요일별 주문 패턴", rev_insight, "info")
+    if ship_insight:
+        render_insight(f"{selected_biz} 요일별 출고 패턴", ship_insight, "info")
 
     # 시간대별 패턴
+    # 시간대별 패턴
     st.markdown("---")
-    st.markdown("### 🕐 시간대별 주문 패턴 (30분 단위)")
+    st.markdown(f"### 🕐 시간대별 주문 패턴 (30분 단위) {'(' + selected_biz + ')' if selected_biz != '전체' else ''}")
     st.markdown('<span class="date-basis">💰 결제완료일시 기준</span>', unsafe_allow_html=True)
 
-    hourly_biz, _ = analyze_hourly_pattern(revenue_df, by_business=True)
+    hourly_stats, hourly_top5 = analyze_hourly_pattern(revenue_df)
 
-    time_tabs = st.tabs(["🥩 육구이", "🚀 우주인", "📊 전체"])
-
-    for tab_idx, (tab, biz_name) in enumerate(zip(time_tabs, ['육구이', '우주인', '전체'])):
-        with tab:
-            if biz_name == '전체':
-                hourly_stats, hourly_top5 = analyze_hourly_pattern(revenue_df)
-                if hourly_stats is not None and len(hourly_stats) > 0:
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        fig = px.bar(hourly_stats, x='시간대', y='금액',
-                                     text=hourly_stats['금액'].apply(lambda x: f'{x:,}' if x > 0 else ''),
-                                     color_discrete_sequence=['#9b59b6'])
-                        fig.update_traces(textposition='outside', textfont_size=8)
-                        fig.update_layout(height=350, title="💰 시간대별 매출", xaxis_title="시간대", yaxis_title="매출(원)",
-                                          xaxis_tickangle=-45)
-                        st.plotly_chart(fig, use_container_width=True)
-                    with col2:
-                        st.markdown("#### 🏆 피크 시간대 TOP 5")
-                        if hourly_top5 is not None and len(hourly_top5) > 0:
-                            for _, row in hourly_top5.iterrows():
-                                st.markdown(f"""
-                                <div style="background:#f8f9fa; padding:8px 12px; margin:5px 0; border-radius:6px; border-left:3px solid #9b59b6;">
-                                    <b>{row['순위']}위</b> {row['시간대']} — <b>{row['금액']:,}원</b> ({row['주문건수']}건)
-                                </div>
-                                """, unsafe_allow_html=True)
-                else:
-                    st.info("시간대별 데이터가 없습니다.")
-            else:
-                if hourly_biz is not None:
-                    biz_hourly = hourly_biz[hourly_biz['사업장'] == biz_name]
-                    if len(biz_hourly) > 0:
-                        col1, col2 = st.columns([2, 1])
-                        with col1:
-                            fig = px.bar(biz_hourly, x='시간대', y='금액',
-                                         text=biz_hourly['금액'].apply(lambda x: f'{x:,}' if x > 0 else ''),
-                                         color_discrete_sequence=[BUSINESS_COLORS.get(biz_name, '#9b59b6')])
-                            fig.update_traces(textposition='outside', textfont_size=8)
-                            fig.update_layout(height=350, title=f"💰 {biz_name} 시간대별 매출", xaxis_title="시간대", yaxis_title="매출(원)",
-                                              xaxis_tickangle=-45)
-                            st.plotly_chart(fig, use_container_width=True)
-                        with col2:
-                            st.markdown(f"#### 🏆 {biz_name} 피크 시간대 TOP 5")
-                            top5 = biz_hourly.nlargest(5, '금액')[['시간대', '금액', '주문건수']].reset_index(drop=True)
-                            top5['순위'] = range(1, len(top5) + 1)
-                            biz_color = BUSINESS_COLORS.get(biz_name, '#9b59b6')
-                            for _, row in top5.iterrows():
-                                st.markdown(f"""
-                                <div style="background:#f8f9fa; padding:8px 12px; margin:5px 0; border-radius:6px; border-left:3px solid {biz_color};">
-                                    <b>{row['순위']}위</b> {row['시간대']} — <b>{row['금액']:,}원</b> ({row['주문건수']}건)
-                                </div>
-                                """, unsafe_allow_html=True)
-                    else:
-                        st.info(f"{biz_name} 시간대별 데이터가 없습니다.")
+    if hourly_stats is not None and len(hourly_stats) > 0:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig = px.bar(hourly_stats, x='시간대', y='금액',
+                         text=hourly_stats['금액'].apply(lambda x: f'{x:,}' if x > 0 else ''),
+                         color_discrete_sequence=[biz_color])
+            fig.update_traces(textposition='outside', textfont_size=8)
+            fig.update_layout(height=350, title="💰 시간대별 매출", xaxis_title="시간대", yaxis_title="매출(원)",
+                              xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            st.markdown(f"#### 🏆 피크 시간대 TOP 5")
+            if hourly_top5 is not None and len(hourly_top5) > 0:
+                for _, row in hourly_top5.iterrows():
+                    st.markdown(f"""
+                    <div style="background:#f8f9fa; padding:8px 12px; margin:5px 0; border-radius:6px; border-left:3px solid {biz_color};">
+                        <b>{row['순위']}위</b> {row['시간대']} — <b>{row['금액']:,}원</b> ({row['주문건수']}건)
+                    </div>
+                    """, unsafe_allow_html=True)
+    else:
+        st.info("시간대별 데이터가 없습니다.")
 
     # 프로모션 추천
     st.markdown("---")
@@ -1326,88 +1273,52 @@ def render_dashboard(analyzer: OrderAnalyzer):
     promo_tabs = st.tabs(["⏰ 시간대별 전략", "🗓️ 시즌별 전략", "🏪 채널별 전략"])
 
     with promo_tabs[0]:
-        st.markdown('<span class="date-basis">💡 주문 패턴 기반 광고/프로모션 타이밍 추천</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="date-basis">💡 {selected_biz} | {start} ~ {end} 주문 패턴 기반 추천</span>', unsafe_allow_html=True)
 
-        # 사업장 선택
-        time_biz_options = ["전체", "육구이", "우주인"]
-        time_biz_tabs = st.tabs(time_biz_options)
+        # 시간대별 추천 (선택된 사업장 + 조회 기간 기준)
+        time_recommendations = generate_time_promotion_recommendations(hourly_stats, selected_biz)
 
-        def render_time_recommendations(hourly_data, biz_name, biz_color):
-            """시간대별 추천 렌더링"""
-            time_recommendations = generate_time_promotion_recommendations(hourly_data, biz_name)
-
-            if time_recommendations:
-                for rec in time_recommendations:
-                    if rec['type'] == 'peak':
-                        st.markdown(f"""
-                        <div style="background:linear-gradient(135deg, #e8f5e9, #f1f8e9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
-                            <div style="font-weight:bold; color:#2e7d32; font-size:16px;">🎯 [{biz_name}] {rec['title']}</div>
-                            <div style="color:#555; margin:8px 0;">
-                                <b>시간대:</b> {rec['time']}<br>
-                                <b>전략:</b> {rec['strategy']}<br>
-                                <b>상세:</b> {rec['detail']}<br>
-                                <b>추천 광고:</b> {rec['ad_type']}
-                            </div>
+        if time_recommendations:
+            for rec in time_recommendations:
+                if rec['type'] == 'peak':
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg, #e8f5e9, #f1f8e9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
+                        <div style="font-weight:bold; color:#2e7d32; font-size:16px;">🎯 {rec['title']}</div>
+                        <div style="color:#555; margin:8px 0;">
+                            <b>시간대:</b> {rec['time']}<br>
+                            <b>전략:</b> {rec['strategy']}<br>
+                            <b>상세:</b> {rec['detail']}<br>
+                            <b>추천 광고:</b> {rec['ad_type']}
                         </div>
-                        """, unsafe_allow_html=True)
-                    elif rec['type'] == 'opportunity':
-                        st.markdown(f"""
-                        <div style="background:linear-gradient(135deg, #fff3e0, #ffe0b2); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #ff9800;">
-                            <div style="font-weight:bold; color:#e65100; font-size:16px;">💡 [{biz_name}] {rec['title']}</div>
-                            <div style="color:#555; margin:8px 0;">
-                                <b>시간대:</b> {rec['time']}<br>
-                                <b>전략:</b> {rec['strategy']}<br>
-                                <b>상세:</b> {rec['detail']}<br>
-                                <b>추천 광고:</b> {rec['ad_type']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    elif rec['type'] == 'timing':
-                        st.markdown(f"""
-                        <div style="background:linear-gradient(135deg, #e3f2fd, #bbdefb); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
-                            <div style="font-weight:bold; color:#1565c0; font-size:16px;">⏱️ [{biz_name}] {rec['title']}</div>
-                            <div style="color:#555; margin:8px 0;">
-                                <b>타이밍:</b> {rec['time']}<br>
-                                <b>전략:</b> {rec['strategy']}<br>
-                                <b>상세:</b> {rec['detail']}<br>
-                                <b>추천 광고:</b> {rec['ad_type']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-            else:
-                st.info(f"{biz_name} 시간대별 데이터가 부족합니다.")
-
-        # 전체 탭
-        with time_biz_tabs[0]:
-            hourly_all, _ = analyze_hourly_pattern(revenue_df)
-            render_time_recommendations(hourly_all, "전체", "#9b59b6")
-
-            # 사업장별 피크 시간 비교
-            hourly_육구이, _ = analyze_hourly_pattern(analyzer.filter_by_business('육구이', revenue_df))
-            hourly_우주인, _ = analyze_hourly_pattern(analyzer.filter_by_business('우주인', revenue_df))
-
-            if hourly_육구이 is not None and len(hourly_육구이) > 0 and hourly_우주인 is not None and len(hourly_우주인) > 0:
-                peak_육구이 = hourly_육구이.loc[hourly_육구이['금액'].idxmax()]['시간대']
-                peak_우주인 = hourly_우주인.loc[hourly_우주인['금액'].idxmax()]['시간대']
-
-                st.markdown(f"""
-                <div style="background:linear-gradient(135deg, #fce4ec, #f8bbd9); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #e91e63;">
-                    <div style="font-weight:bold; color:#c2185b; font-size:16px;">🔍 사업장별 피크 시간 비교</div>
-                    <div style="color:#555; margin:8px 0;">
-                        <b>🥩 육구이:</b> {peak_육구이} 피크<br>
-                        <b>🚀 우주인:</b> {peak_우주인} 피크<br>
-                        <b>💡 전략:</b> {'피크 시간이 다르므로 광고 시간대를 분리 운영하세요.' if peak_육구이 != peak_우주인 else '피크 시간이 같으므로 해당 시간대에 집중 광고하세요.'}
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+                elif rec['type'] == 'opportunity':
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg, #fff3e0, #ffe0b2); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #ff9800;">
+                        <div style="font-weight:bold; color:#e65100; font-size:16px;">💡 {rec['title']}</div>
+                        <div style="color:#555; margin:8px 0;">
+                            <b>시간대:</b> {rec['time']}<br>
+                            <b>전략:</b> {rec['strategy']}<br>
+                            <b>상세:</b> {rec['detail']}<br>
+                            <b>추천 광고:</b> {rec['ad_type']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif rec['type'] == 'timing':
+                    st.markdown(f"""
+                    <div style="background:linear-gradient(135deg, #e3f2fd, #bbdefb); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid {biz_color};">
+                        <div style="font-weight:bold; color:#1565c0; font-size:16px;">⏱️ {rec['title']}</div>
+                        <div style="color:#555; margin:8px 0;">
+                            <b>타이밍:</b> {rec['time']}<br>
+                            <b>전략:</b> {rec['strategy']}<br>
+                            <b>상세:</b> {rec['detail']}<br>
+                            <b>추천 광고:</b> {rec['ad_type']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-        # 육구이 탭
-        with time_biz_tabs[1]:
-            hourly_육구이, _ = analyze_hourly_pattern(analyzer.filter_by_business('육구이', revenue_df))
-            if hourly_육구이 is not None and len(hourly_육구이) > 0:
-                render_time_recommendations(hourly_육구이, "육구이", "#FF6B6B")
-
-                # 육구이 특화 전략
+            # 사업장 특화 전략 (선택된 사업장에 따라)
+            if selected_biz == '육구이':
                 st.markdown("""
                 <div style="background:linear-gradient(135deg, #FFE5E5, #FFF5F5); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #FF6B6B;">
                     <div style="font-weight:bold; color:#c0392b; font-size:16px;">🥩 육구이 특화 전략</div>
@@ -1418,16 +1329,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-            else:
-                st.info("육구이 시간대별 데이터가 없습니다.")
-
-        # 우주인 탭
-        with time_biz_tabs[2]:
-            hourly_우주인, _ = analyze_hourly_pattern(analyzer.filter_by_business('우주인', revenue_df))
-            if hourly_우주인 is not None and len(hourly_우주인) > 0:
-                render_time_recommendations(hourly_우주인, "우주인", "#4ECDC4")
-
-                # 우주인 특화 전략
+            elif selected_biz == '우주인':
                 st.markdown("""
                 <div style="background:linear-gradient(135deg, #E5F9F6, #F5FFFD); padding:15px; margin:10px 0; border-radius:10px; border-left:4px solid #4ECDC4;">
                     <div style="font-weight:bold; color:#16a085; font-size:16px;">🚀 우주인 특화 전략</div>
@@ -1438,13 +1340,13 @@ def render_dashboard(analyzer: OrderAnalyzer):
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-            else:
-                st.info("우주인 시간대별 데이터가 없습니다.")
+        else:
+            st.info("시간대별 데이터가 부족합니다. 더 많은 데이터를 업로드하면 추천이 생성됩니다.")
 
     with promo_tabs[1]:
-        st.markdown('<span class="date-basis">💡 축산물 시즌별 마케팅 전략</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="date-basis">💡 {selected_biz} | {start} ~ {end} 시즌별 마케팅 전략</span>', unsafe_allow_html=True)
 
-        season_recommendations, monthly_data = generate_seasonal_recommendations(revenue_df)
+        season_recommendations, monthly_data = generate_seasonal_recommendations(revenue_df, selected_biz)
 
         if season_recommendations:
             for rec in season_recommendations:
@@ -1605,12 +1507,9 @@ def render_dashboard(analyzer: OrderAnalyzer):
             """)
 
     with promo_tabs[2]:
-        st.markdown('<span class="date-basis">💡 판매 채널별 맞춤 마케팅 전략</span>', unsafe_allow_html=True)
+        st.markdown(f'<span class="date-basis">💡 {selected_biz} | {start} ~ {end} 채널별 맞춤 전략</span>', unsafe_allow_html=True)
 
-        # 사업장 선택
-        channel_biz = st.radio("사업장 선택", ["전체", "육구이", "우주인"], horizontal=True, key="channel_biz")
-
-        channel_recommendations, all_strategies = generate_channel_strategies(revenue_df, channel_biz)
+        channel_recommendations, all_strategies = generate_channel_strategies(revenue_df, selected_biz)
 
         if channel_recommendations:
             st.markdown("#### 📊 내 채널별 맞춤 전략")
