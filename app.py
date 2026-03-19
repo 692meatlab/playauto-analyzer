@@ -1562,8 +1562,8 @@ def render_dashboard(analyzer: OrderAnalyzer):
                 """)
                 st.markdown("---")
 
-        # 사업장별 채널 전략 차이
-        if channel_biz == "전체":
+        # 사업장별 채널 전략 차이 (전체 선택시에만 표시)
+        if selected_biz == "전체":
             st.markdown("#### 🔍 사업장별 주력 채널 비교")
 
             col1, col2 = st.columns(2)
