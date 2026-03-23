@@ -8,10 +8,23 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from io import BytesIO
 
 from analyzers import OrderAnalyzer
+
+# KST 타임존
+KST = timezone(timedelta(hours=9))
+
+
+def now_kst() -> datetime:
+    """현재 시간을 KST로 반환"""
+    return datetime.now(KST)
+
+
+def today_kst() -> date:
+    """오늘 날짜를 KST로 반환"""
+    return datetime.now(KST).date()
 
 
 # ===== 페이지 설정 =====
@@ -66,24 +79,47 @@ def get_shop_col(df: pd.DataFrame) -> str:
     return '쇼핑몰명'
 
 
+@st.cache_resource(show_spinner="데이터 로딩 중...")
+def _create_analyzer() -> OrderAnalyzer:
+    """OrderAnalyzer 인스턴스 생성 (캐시됨)"""
+    github_token = None
+    github_repo = None
+
+    try:
+        if hasattr(st, 'secrets'):
+            github_token = st.secrets.get("GITHUB_TOKEN", None)
+            github_repo = st.secrets.get("GITHUB_REPO", None)
+    except Exception:
+        pass
+
+    return OrderAnalyzer(
+        github_token=github_token,
+        github_repo=github_repo
+    )
+
+
 def get_analyzer() -> OrderAnalyzer:
-    if 'analyzer' not in st.session_state:
-        # GitHub 저장소 설정 확인
-        github_token = None
-        github_repo = None
+    """캐시된 OrderAnalyzer 반환 (데이터 없으면 자동 재로드)"""
+    analyzer = _create_analyzer()
 
-        try:
-            if hasattr(st, 'secrets'):
-                github_token = st.secrets.get("GITHUB_TOKEN", None)
-                github_repo = st.secrets.get("GITHUB_REPO", None)
-        except Exception:
-            pass
+    # 캐시된 analyzer에 데이터가 없지만 파일은 존재하는 경우 → 캐시 클리어 후 재로드
+    if analyzer.combined_df is None or analyzer.combined_df.empty:
+        if analyzer.DATA_FILE.exists():
+            _create_analyzer.clear()
+            analyzer = _create_analyzer()
 
-        st.session_state.analyzer = OrderAnalyzer(
-            github_token=github_token,
-            github_repo=github_repo
-        )
-    return st.session_state.analyzer
+    return analyzer
+
+
+def clear_analyzer_cache():
+    """데이터 변경 시 캐시 클리어"""
+    _create_analyzer.clear()
+
+
+def force_reload_data():
+    """강제로 데이터 재로드 (사이드바 버튼용)"""
+    _create_analyzer.clear()
+    st.rerun()
 
 
 def to_excel(df: pd.DataFrame) -> bytes:
@@ -543,7 +579,7 @@ def generate_seasonal_recommendations(df, biz_name="전체"):
         }
 
     # 현재 월 확인
-    current_month = datetime.now().month
+    current_month = now_kst().month
     current_season = get_season(current_month)
     next_month = (current_month % 12) + 1
     next_season = get_season(next_month)
@@ -804,6 +840,11 @@ def analyze_hourly_pattern(df, by_business=False):
 
 
 def main():
+    # 첫 실행 시 캐시 강제 클리어 (데이터 로드 보장)
+    if 'cache_cleared' not in st.session_state:
+        _create_analyzer.clear()
+        st.session_state.cache_cleared = True
+
     analyzer = get_analyzer()
 
     with st.sidebar:
@@ -857,6 +898,10 @@ def main():
             if st.button(f"{manage_icons[menu]} {menu}", key=f"menu_{menu}", use_container_width=True, type=btn_type):
                 st.session_state.current_page = menu
                 st.rerun()
+
+        # 데이터 새로고침 버튼
+        if st.button("🔄 데이터 새로고침", key="reload_data", use_container_width=True):
+            force_reload_data()
 
         # 목표 설정
         st.markdown("---")
@@ -1076,13 +1121,13 @@ def render_data_list_page(analyzer: OrderAnalyzer):
         with col3:
             if st.button("🗑️ 삭제", key=f"del_{i}", use_container_width=True):
                 analyzer.delete_period(p['기간'])
-                st.session_state.analyzer = analyzer
+                clear_analyzer_cache()
                 st.rerun()
         st.markdown("---")
 
     if st.button("🗑️ 전체 삭제", type="secondary"):
         analyzer.clear_all_data()
-        st.session_state.analyzer = analyzer
+        clear_analyzer_cache()
         st.rerun()
 
 
@@ -1264,7 +1309,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
             fig = px.bar(weekday_rev, x='요일명', y='금액', text=weekday_rev['금액'].apply(lambda x: f'{x:,}'),
                          color_discrete_sequence=[biz_color])
             fig.update_traces(textposition='outside')
-            fig.update_layout(height=280, title=f"💰 요일별 매출", xaxis_title="", yaxis_title="")
+            fig.update_layout(height=280, title=f"💰 요일별 매출", xaxis_title="", yaxis_title="", yaxis_rangemode='tozero')
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("매출 데이터가 없습니다.")
@@ -1275,7 +1320,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
             fig = px.bar(weekday_ship, x='요일명', y='출고수량', text='출고수량',
                          color_discrete_sequence=[biz_color])
             fig.update_traces(textposition='outside')
-            fig.update_layout(height=280, title="📦 요일별 출고", xaxis_title="", yaxis_title="")
+            fig.update_layout(height=280, title="📦 요일별 출고", xaxis_title="", yaxis_title="", yaxis_rangemode='tozero')
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("출고 데이터가 없습니다.")
@@ -1302,7 +1347,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
                          color_discrete_sequence=[biz_color])
             fig.update_traces(textposition='outside', textfont_size=8)
             fig.update_layout(height=350, title="💰 시간대별 매출", xaxis_title="시간대", yaxis_title="매출(원)",
-                              xaxis_tickangle=-45)
+                              xaxis_tickangle=-45, yaxis_rangemode='tozero')
             st.plotly_chart(fig, use_container_width=True)
         with col2:
             st.markdown(f"#### 🏆 피크 시간대 TOP 5")
@@ -1455,7 +1500,7 @@ def render_dashboard(analyzer: OrderAnalyzer):
                              text=monthly_data['매출'].apply(lambda x: f'{x:,}'),
                              color_discrete_sequence=['#8e44ad'])
                 fig.update_traces(textposition='outside')
-                fig.update_layout(height=300, xaxis_title="", yaxis_title="매출(원)")
+                fig.update_layout(height=300, xaxis_title="", yaxis_title="매출(원)", yaxis_rangemode='tozero')
                 st.plotly_chart(fig, use_container_width=True)
 
         # 축산 MD 연간 캘린더
@@ -1746,14 +1791,14 @@ def render_shop_analysis(analyzer: OrderAnalyzer):
                 fig = px.bar(merged, x='쇼핑몰명', y='매출', text=merged['매출'].apply(lambda x: f'{x:,}'),
                              color_discrete_sequence=[BUSINESS_COLORS[biz_name]])
                 fig.update_traces(textposition='outside')
-                fig.update_layout(height=300, showlegend=False, title="💰 매출")
+                fig.update_layout(height=300, showlegend=False, title="💰 매출", yaxis_rangemode='tozero')
                 st.plotly_chart(fig, use_container_width=True)
 
             with col2:
                 fig = px.bar(merged, x='쇼핑몰명', y='출고수량', text='출고수량',
                              color_discrete_sequence=[BUSINESS_COLORS[biz_name]])
                 fig.update_traces(textposition='outside')
-                fig.update_layout(height=300, showlegend=False, title="📦 출고수량")
+                fig.update_layout(height=300, showlegend=False, title="📦 출고수량", yaxis_rangemode='tozero')
                 st.plotly_chart(fig, use_container_width=True)
 
             # 테이블
@@ -1897,14 +1942,14 @@ def render_product_analysis(analyzer: OrderAnalyzer):
         fig = px.bar(chart_df, x='상품명', y='매출', text=chart_df['매출'].apply(lambda x: f'{x:,}'),
                      color='사업장', color_discrete_map=BUSINESS_COLORS)
         fig.update_traces(textposition='outside')
-        fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, title="💰 매출 TOP 15")
+        fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, title="💰 매출 TOP 15", yaxis_rangemode='tozero')
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         fig = px.bar(chart_df, x='상품명', y='출고수량', text='출고수량',
                      color='사업장', color_discrete_map=BUSINESS_COLORS)
         fig.update_traces(textposition='outside')
-        fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, title="📦 출고 TOP 15")
+        fig.update_layout(xaxis_tickangle=-45, height=400, showlegend=False, title="📦 출고 TOP 15", yaxis_rangemode='tozero')
         st.plotly_chart(fig, use_container_width=True)
 
     # 취소 많은 상품
@@ -1913,7 +1958,7 @@ def render_product_analysis(analyzer: OrderAnalyzer):
         fig = px.bar(cancel_top, x='상품명', y='취소건수', text='취소건수',
                      color='사업장', color_discrete_map=BUSINESS_COLORS)
         fig.update_traces(textposition='outside')
-        fig.update_layout(xaxis_tickangle=-45, height=300, showlegend=False)
+        fig.update_layout(xaxis_tickangle=-45, height=300, showlegend=False, yaxis_rangemode='tozero')
         st.plotly_chart(fig, use_container_width=True)
 
     st.download_button("📥 상품별 데이터 다운로드", data=to_excel(product_df),
@@ -2066,7 +2111,7 @@ def render_period_comparison(analyzer: OrderAnalyzer):
                     fig.add_trace(go.Bar(name=f'{biz} (비교)', x=[biz], y=[row['매출_비교']],
                                          marker_color=BUSINESS_COLORS.get(biz, '#888'), opacity=0.5,
                                          text=[f"{int(row['매출_비교']):,}"], textposition='outside'))
-                fig.update_layout(barmode='group', height=300, title="💰 매출 비교", showlegend=False)
+                fig.update_layout(barmode='group', height=300, title="💰 매출 비교", showlegend=False, yaxis_rangemode='tozero')
                 st.plotly_chart(fig, use_container_width=True)
 
             with col2:
@@ -2079,7 +2124,7 @@ def render_period_comparison(analyzer: OrderAnalyzer):
                     fig.add_trace(go.Bar(name=f'{biz} (비교)', x=[biz], y=[row['판매수량_비교']],
                                          marker_color=BUSINESS_COLORS.get(biz, '#888'), opacity=0.5,
                                          text=[f"{int(row['판매수량_비교']):,}"], textposition='outside'))
-                fig.update_layout(barmode='group', height=300, title="📦 출고 비교", showlegend=False)
+                fig.update_layout(barmode='group', height=300, title="📦 출고 비교", showlegend=False, yaxis_rangemode='tozero')
                 st.plotly_chart(fig, use_container_width=True)
 
         # ========== 쇼핑몰별 비교 ==========
@@ -2757,7 +2802,7 @@ def render_competitor_analysis(analyzer: OrderAnalyzer):
                         'competitor_price': competitor_price,
                         'diff': my_price - competitor_price,
                         'diff_rate': ((my_price - competitor_price) / competitor_price * 100) if competitor_price > 0 else 0,
-                        'date': datetime.now().strftime('%Y-%m-%d')
+                        'date': now_kst().strftime('%Y-%m-%d')
                     })
                     st.success("가격 정보가 추가되었습니다.")
                     st.rerun()
@@ -2849,7 +2894,7 @@ def render_competitor_analysis(analyzer: OrderAnalyzer):
     if st.button("📌 프로모션 기록", key="add_promo_record"):
         if promo_competitor and promo_detail:
             st.session_state.competitor_promos.append({
-                'date': datetime.now().strftime('%Y-%m-%d'),
+                'date': now_kst().strftime('%Y-%m-%d'),
                 'competitor': promo_competitor,
                 'type': promo_type,
                 'detail': promo_detail,
@@ -2900,7 +2945,7 @@ def render_competitor_analysis(analyzer: OrderAnalyzer):
         # 프로모션 기반 전략
         if st.session_state.competitor_promos:
             promo_df = pd.DataFrame(st.session_state.competitor_promos)
-            recent_promos = promo_df[promo_df['date'] >= (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')]
+            recent_promos = promo_df[promo_df['date'] >= (now_kst() - timedelta(days=7)).strftime('%Y-%m-%d')]
 
             if len(recent_promos) > 3:
                 strategies.append({

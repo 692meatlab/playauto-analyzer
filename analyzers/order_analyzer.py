@@ -6,9 +6,22 @@ import json
 import requests
 import base64
 from io import StringIO
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import Dict, List, Optional
 from pathlib import Path
+
+# KST 타임존
+KST = timezone(timedelta(hours=9))
+
+
+def now_kst() -> datetime:
+    """현재 시간을 KST로 반환"""
+    return datetime.now(KST)
+
+
+def today_kst() -> date:
+    """오늘 날짜를 KST로 반환"""
+    return datetime.now(KST).date()
 
 
 class GitHubStorage:
@@ -233,9 +246,32 @@ class OrderAnalyzer:
         """엑셀 파일 로드 및 처리 (날짜는 파일 내 컬럼에서 자동 추출)"""
         df = pd.read_excel(file)
 
-        # 컬럼명 통일 (쇼핑몰 -> 쇼핑몰명)
+        # ===== 전처리 Phase =====
+        original_count = len(df)
+
+        # 1. 컬럼명 통일 (쇼핑몰 -> 쇼핑몰명)
         if '쇼핑몰' in df.columns and '쇼핑몰명' not in df.columns:
             df = df.rename(columns={'쇼핑몰': '쇼핑몰명'})
+
+        # 2. 중복 행 제거 (묶음번호 + SKU코드 기준)
+        if '묶음번호' in df.columns and 'SKU코드' in df.columns:
+            df = df.drop_duplicates(subset=['묶음번호', 'SKU코드'], keep='first')
+
+        # 3. 금액 컬럼 결측치 처리
+        if '금액' in df.columns:
+            df['금액'] = pd.to_numeric(df['금액'], errors='coerce').fillna(0).astype(int)
+
+        # 4. 주문수량 결측치 처리
+        if '주문수량' in df.columns:
+            df['주문수량'] = pd.to_numeric(df['주문수량'], errors='coerce').fillna(0).astype(int)
+
+        # 5. 이상치 처리 (음수 금액 → 0으로 처리, 취소/환불 건은 별도 처리)
+        if '금액' in df.columns:
+            df.loc[df['금액'] < 0, '금액'] = 0
+
+        # 전처리 결과 기록
+        cleaned_count = len(df)
+        removed_count = original_count - cleaned_count
 
         # 결제완료일에서 날짜 추출 (매출 분석용)
         if '결제완료일' in df.columns:
@@ -272,7 +308,7 @@ class OrderAnalyzer:
             start_str = min_date.strftime('%Y-%m-%d')
             end_str = max_date.strftime('%Y-%m-%d')
         else:
-            start_str = datetime.now().strftime('%Y-%m-%d')
+            start_str = now_kst().strftime('%Y-%m-%d')
             end_str = start_str
 
         # 기간 정보 추가
@@ -296,10 +332,12 @@ class OrderAnalyzer:
             'start_date': start_str,
             'end_date': end_str,
             'row_count': len(df),
+            'original_row_count': original_count,
+            'removed_duplicates': removed_count,
             'order_count': int(total_orders),
             'total_revenue': int(total_revenue),
             'cancel_count': int(cancel_count),
-            'loaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
         }
 
         self._update_combined()

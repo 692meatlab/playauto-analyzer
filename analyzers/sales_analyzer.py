@@ -4,9 +4,17 @@
 import pandas as pd
 import json
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import Dict, List, Optional
 from pathlib import Path
+
+# KST 타임존
+KST = timezone(timedelta(hours=9))
+
+
+def now_kst() -> datetime:
+    """현재 시간을 KST로 반환"""
+    return datetime.now(KST)
 
 
 class SalesAnalyzer:
@@ -114,7 +122,7 @@ class SalesAnalyzer:
             'start_date': start_date.strftime('%Y-%m-%d'),
             'end_date': end_date.strftime('%Y-%m-%d'),
             'row_count': len(df),
-            'loaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
         }
 
         # 통합 데이터 업데이트 및 저장
