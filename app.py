@@ -91,13 +91,21 @@ def _create_analyzer() -> OrderAnalyzer:
                 github_token = st.secrets["GITHUB_TOKEN"]
             if "GITHUB_REPO" in st.secrets:
                 github_repo = st.secrets["GITHUB_REPO"]
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Secrets 로드 실패: {e}")
 
     return OrderAnalyzer(
         github_token=github_token,
         github_repo=github_repo
     )
+
+
+def get_storage_mode() -> str:
+    """현재 저장 모드 반환"""
+    analyzer = _create_analyzer()
+    if analyzer.github:
+        return "☁️ GitHub"
+    return "💾 로컬"
 
 
 def get_analyzer() -> OrderAnalyzer:
@@ -933,6 +941,10 @@ def main():
 
             st.caption(f"📦 출고: {stats['판매수량']:,}개")
             st.caption(f"🔄 취소: {stats['취소건수']}건 ({stats['취소율']}%)")
+
+        # 저장 모드 표시
+        st.markdown("---")
+        st.caption(f"저장: {get_storage_mode()}")
 
     # 메인 영역
     current_page = st.session_state.current_page
