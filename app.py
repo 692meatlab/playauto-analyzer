@@ -112,9 +112,10 @@ def get_analyzer() -> OrderAnalyzer:
     """캐시된 OrderAnalyzer 반환 (데이터 없으면 자동 재로드)"""
     analyzer = _create_analyzer()
 
-    # 캐시된 analyzer에 데이터가 없지만 파일은 존재하는 경우 → 캐시 클리어 후 재로드
+    # 캐시된 analyzer에 데이터가 없는 경우 → 캐시 클리어 후 재로드
     if analyzer.combined_df is None or analyzer.combined_df.empty:
-        if analyzer.DATA_FILE.exists():
+        # GitHub 모드 또는 로컬 파일 존재 시 재로드
+        if analyzer.github or analyzer.DATA_FILE.exists():
             _create_analyzer.clear()
             analyzer = _create_analyzer()
 
@@ -1114,6 +1115,14 @@ def render_upload_page(analyzer: OrderAnalyzer):
 
 def render_data_list_page(analyzer: OrderAnalyzer):
     st.title("📋 저장된 데이터")
+
+    # 디버그 정보
+    with st.expander("🔧 디버그 정보", expanded=False):
+        st.write(f"GitHub 모드: {analyzer.github is not None}")
+        st.write(f"combined_df: {analyzer.combined_df is not None}")
+        if analyzer.combined_df is not None:
+            st.write(f"데이터 행수: {len(analyzer.combined_df)}")
+        st.write(f"metadata: {analyzer.metadata}")
 
     periods = analyzer.get_loaded_periods()
     if not periods:
