@@ -91,21 +91,13 @@ def _create_analyzer() -> OrderAnalyzer:
                 github_token = st.secrets["GITHUB_TOKEN"]
             if "GITHUB_REPO" in st.secrets:
                 github_repo = st.secrets["GITHUB_REPO"]
-    except Exception as e:
-        st.error(f"Secrets 로드 실패: {e}")
+    except Exception:
+        pass
 
     return OrderAnalyzer(
         github_token=github_token,
         github_repo=github_repo
     )
-
-
-def get_storage_mode() -> str:
-    """현재 저장 모드 반환"""
-    analyzer = _create_analyzer()
-    if analyzer.github:
-        return "☁️ GitHub"
-    return "💾 로컬"
 
 
 def get_analyzer() -> OrderAnalyzer:
@@ -943,10 +935,6 @@ def main():
             st.caption(f"📦 출고: {stats['판매수량']:,}개")
             st.caption(f"🔄 취소: {stats['취소건수']}건 ({stats['취소율']}%)")
 
-        # 저장 모드 표시
-        st.markdown("---")
-        st.caption(f"저장: {get_storage_mode()}")
-
     # 메인 영역
     current_page = st.session_state.current_page
     has_data = analyzer.combined_df is not None and len(analyzer.combined_df) > 0
@@ -1115,16 +1103,6 @@ def render_upload_page(analyzer: OrderAnalyzer):
 
 def render_data_list_page(analyzer: OrderAnalyzer):
     st.title("📋 저장된 데이터")
-
-    # 디버그 정보
-    with st.expander("🔧 디버그 정보", expanded=False):
-        st.write(f"GitHub 모드: {analyzer.github is not None}")
-        st.write(f"combined_df: {analyzer.combined_df is not None}")
-        if analyzer.combined_df is not None:
-            st.write(f"데이터 행수: {len(analyzer.combined_df)}")
-        st.write(f"metadata: {analyzer.metadata}")
-        if hasattr(analyzer, 'load_error') and analyzer.load_error:
-            st.error(f"로드 에러: {analyzer.load_error}")
 
     periods = analyzer.get_loaded_periods()
     if not periods:
