@@ -32,10 +32,9 @@ class GitHubStorage:
         self.repo = repo  # "username/repo-name"
         self.branch = branch
         self.api_base = "https://api.github.com"
-        self.headers = {
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
+        self.headers = {"Accept": "application/vnd.github.v3+json"}
+        if token:
+            self.headers["Authorization"] = f"token {token}"
 
     def _get_file(self, path: str) -> Optional[dict]:
         """GitHub에서 파일 정보 가져오기"""
@@ -54,11 +53,24 @@ class GitHubStorage:
         return None
 
     def read_csv(self, path: str) -> Optional[pd.DataFrame]:
-        """GitHub에서 CSV 파일 읽기"""
+        """GitHub에서 CSV 파일 읽기 (1MB 초과 파일은 download_url 사용)"""
         file_info = self._get_file(path)
-        if file_info and 'content' in file_info:
-            content = base64.b64decode(file_info['content']).decode('utf-8')
+        if not file_info:
+            return None
+
+        # content가 있고 비어있지 않으면 직접 디코딩
+        content_b64 = file_info.get('content', '')
+        if content_b64 and len(content_b64) > 0:
+            content = base64.b64decode(content_b64).decode('utf-8')
             return pd.read_csv(StringIO(content))
+
+        # 1MB 초과 파일은 download_url 사용
+        download_url = file_info.get('download_url')
+        if download_url:
+            response = requests.get(download_url)
+            if response.status_code == 200:
+                return pd.read_csv(StringIO(response.text))
+
         return None
 
     def write_file(self, path: str, content: str, message: str = "Update data") -> bool:
