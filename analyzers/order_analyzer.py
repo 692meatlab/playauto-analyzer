@@ -55,11 +55,9 @@ class GitHubStorage:
 
     def read_csv(self, path: str) -> Optional[pd.DataFrame]:
         """GitHub에서 CSV 파일 읽기 (1MB 초과 파일은 download_url 사용)"""
-        self.last_error = None
-
         file_info = self._get_file(path)
         if not file_info:
-            self.last_error = f"파일 정보 가져오기 실패: {path}"
+            # last_error는 _get_file에서 이미 설정됨
             return None
 
         # content가 있고 비어있지 않으면 직접 디코딩
@@ -198,8 +196,7 @@ class OrderAnalyzer:
                 for period in df['기간'].unique():
                     self.data[period] = df[df['기간'] == period].copy()
             else:
-                github_err = getattr(self.github, 'last_error', None)
-                self.load_error = f"CSV 로드 실패: {github_err or 'unknown'}"
+                self.load_error = f"CSV 로드 실패: {getattr(self.github, 'last_error', 'unknown')}"
         except Exception as e:
             self.load_error = str(e)
             print(f"GitHub 데이터 로드 실패: {e}")
