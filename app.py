@@ -87,8 +87,10 @@ def _create_analyzer() -> OrderAnalyzer:
 
     try:
         if hasattr(st, 'secrets'):
-            github_token = st.secrets.get("GITHUB_TOKEN", None)
-            github_repo = st.secrets.get("GITHUB_REPO", None)
+            if "GITHUB_TOKEN" in st.secrets:
+                github_token = st.secrets["GITHUB_TOKEN"]
+            if "GITHUB_REPO" in st.secrets:
+                github_repo = st.secrets["GITHUB_REPO"]
     except Exception:
         pass
 
