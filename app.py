@@ -1123,6 +1123,8 @@ def render_data_list_page(analyzer: OrderAnalyzer):
         if analyzer.combined_df is not None:
             st.write(f"데이터 행수: {len(analyzer.combined_df)}")
         st.write(f"metadata: {analyzer.metadata}")
+        if hasattr(analyzer, 'load_error') and analyzer.load_error:
+            st.error(f"로드 에러: {analyzer.load_error}")
 
     periods = analyzer.get_loaded_periods()
     if not periods:

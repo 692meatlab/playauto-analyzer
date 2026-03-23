@@ -42,6 +42,7 @@ class GitHubStorage:
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:
             return response.json()
+        self.last_error = f"API 요청 실패: {response.status_code} - {response.text[:200]}"
         return None
 
     def read_json(self, path: str) -> Optional[dict]:
@@ -54,8 +55,11 @@ class GitHubStorage:
 
     def read_csv(self, path: str) -> Optional[pd.DataFrame]:
         """GitHub에서 CSV 파일 읽기 (1MB 초과 파일은 download_url 사용)"""
+        self.last_error = None
+
         file_info = self._get_file(path)
         if not file_info:
+            self.last_error = f"파일 정보 가져오기 실패: {path}"
             return None
 
         # content가 있고 비어있지 않으면 직접 디코딩
@@ -70,7 +74,11 @@ class GitHubStorage:
             response = requests.get(download_url)
             if response.status_code == 200:
                 return pd.read_csv(StringIO(response.text))
+            else:
+                self.last_error = f"download_url 요청 실패: {response.status_code}"
+                return None
 
+        self.last_error = "content와 download_url 모두 없음"
         return None
 
     def write_file(self, path: str, content: str, message: str = "Update data") -> bool:
@@ -164,6 +172,7 @@ class OrderAnalyzer:
 
     def _load_from_github(self):
         """GitHub에서 데이터 로드"""
+        self.load_error = None  # 에러 저장용
         try:
             # 메타데이터 로드
             meta = self.github.read_json(self.GITHUB_META_FILE)
@@ -188,7 +197,11 @@ class OrderAnalyzer:
                 self.combined_df = df
                 for period in df['기간'].unique():
                     self.data[period] = df[df['기간'] == period].copy()
+            else:
+                github_err = getattr(self.github, 'last_error', None)
+                self.load_error = f"CSV 로드 실패: {github_err or 'unknown'}"
         except Exception as e:
+            self.load_error = str(e)
             print(f"GitHub 데이터 로드 실패: {e}")
 
     def _load_from_local(self):
