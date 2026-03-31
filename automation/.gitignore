@@ -1,0 +1,18 @@
+# 환경변수 (비밀정보)
+.env
+
+# 다운로드 파일
+downloads/
+*.xlsx
+*.xls
+
+# 로그
+logs/
+*.log
+
+# 스크린샷
+*.png
+
+# Python
+__pycache__/
+*.pyc
