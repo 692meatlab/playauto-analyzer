@@ -1,14 +1,1 @@
-{
-  "2026-03-27 ~ 2026-03-30": {
-    "file_name": "playauto_20260330_filtered.xlsx",
-    "start_date": "2026-03-27",
-    "end_date": "2026-03-30",
-    "row_count": 59,
-    "original_row_count": 59,
-    "removed_duplicates": 0,
-    "order_count": 54,
-    "total_revenue": 3579500,
-    "cancel_count": 1,
-    "loaded_at": "2026-03-31 16:54:46"
-  }
-}
+{}
