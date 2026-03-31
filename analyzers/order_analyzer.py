@@ -246,6 +246,24 @@ class OrderAnalyzer:
                 self.combined_df = df
                 for period in df['기간'].unique():
                     self.data[period] = df[df['기간'] == period].copy()
+
+                # metadata와 data 기간 키 동기화
+                # (자동화 업로드와 수동 업로드의 기간 키가 다를 수 있음)
+                for period in list(self.data.keys()):
+                    if period not in self.metadata:
+                        df_p = self.data[period]
+                        self.metadata[period] = {
+                            'file_name': 'auto-collected',
+                            'row_count': len(df_p),
+                            'order_count': int(df_p['묶음번호'].nunique()) if '묶음번호' in df_p.columns else len(df_p),
+                            'total_revenue': int(df_p['금액'].sum()) if '금액' in df_p.columns else 0,
+                            'cancel_count': int(df_p['취소여부'].sum()) if '취소여부' in df_p.columns else 0,
+                            'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                # 데이터에 없는 stale metadata 제거
+                for period in list(self.metadata.keys()):
+                    if period not in self.data:
+                        del self.metadata[period]
             else:
                 self.load_error = f"CSV 로드 실패: {getattr(self.github, 'last_error', 'unknown')}"
         except Exception as e:
@@ -284,9 +302,12 @@ class OrderAnalyzer:
             # 메타데이터 저장
             self.github.write_json(self.GITHUB_META_FILE, self.metadata, "Update metadata")
 
-            # 데이터 저장
+            # 데이터 저장 or 삭제
             if self.combined_df is not None and not self.combined_df.empty:
                 self.github.write_csv(self.GITHUB_DATA_FILE, self.combined_df, "Update order data")
+            else:
+                # 데이터가 비었으면 GitHub CSV 파일도 삭제
+                self.github.delete_file(self.GITHUB_DATA_FILE, "Delete order data (empty)")
         except Exception as e:
             print(f"GitHub 저장 실패: {e}")
 
