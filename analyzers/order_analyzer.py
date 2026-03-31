@@ -180,17 +180,68 @@ class OrderAnalyzer:
             # 데이터 로드
             df = self.github.read_csv(self.GITHUB_DATA_FILE)
             if df is not None and not df.empty:
-                # 날짜 컬럼 변환
-                if '날짜' in df.columns:
+                # 쇼핑몰 → 쇼핑몰명 컬럼명 통일
+                if '쇼핑몰' in df.columns and '쇼핑몰명' not in df.columns:
+                    df = df.rename(columns={'쇼핑몰': '쇼핑몰명'})
+
+                # 금액/수량 숫자 변환
+                if '금액' in df.columns:
+                    df['금액'] = pd.to_numeric(df['금액'], errors='coerce').fillna(0).astype(int)
+                if '주문수량' in df.columns:
+                    df['주문수량'] = pd.to_numeric(df['주문수량'], errors='coerce').fillna(0).astype(int)
+
+                # 날짜 파생 컬럼 — 없으면 원본 컬럼에서 생성
+                if '날짜' not in df.columns:
+                    if '결제완료일' in df.columns:
+                        df['결제일시'] = pd.to_datetime(df['결제완료일'], errors='coerce')
+                        df['날짜'] = df['결제일시'].dt.date
+                    else:
+                        df['날짜'] = None
+                else:
                     df['날짜'] = pd.to_datetime(df['날짜']).dt.date
-                if '출고날짜' in df.columns:
+
+                if '출고날짜' not in df.columns:
+                    if '출고완료일' in df.columns:
+                        df['출고일시'] = pd.to_datetime(df['출고완료일'], errors='coerce')
+                        df['출고날짜'] = df['출고일시'].dt.date
+                    else:
+                        df['출고날짜'] = df['날짜']
+                else:
                     df['출고날짜'] = pd.to_datetime(df['출고날짜']).dt.date
+
                 if '결제일시' in df.columns:
                     df['결제일시'] = pd.to_datetime(df['결제일시'])
                 if '출고일시' in df.columns:
                     df['출고일시'] = pd.to_datetime(df['출고일시'])
-                if '취소여부' in df.columns:
+
+                # 사업장 분류
+                if '사업장' not in df.columns:
+                    if '계정' in df.columns:
+                        df['사업장'] = df['계정'].apply(self.classify_business)
+                    else:
+                        df['사업장'] = '미분류'
+
+                # 취소여부
+                if '취소여부' not in df.columns:
+                    if '주문수량' in df.columns:
+                        df['취소여부'] = df['주문수량'] == 0
+                    else:
+                        df['취소여부'] = False
+                else:
                     df['취소여부'] = df['취소여부'].astype(bool)
+
+                # 기간/년월
+                if '기간' not in df.columns:
+                    valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
+                    if len(valid_dates) > 0:
+                        min_d = pd.to_datetime(valid_dates.min()).strftime('%Y-%m-%d')
+                        max_d = pd.to_datetime(valid_dates.max()).strftime('%Y-%m-%d')
+                    else:
+                        min_d = max_d = now_kst().strftime('%Y-%m-%d')
+                    df['기간'] = f"{min_d} ~ {max_d}"
+
+                if '년월' not in df.columns:
+                    df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
 
                 self.combined_df = df
                 for period in df['기간'].unique():
