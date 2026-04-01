@@ -1109,15 +1109,38 @@ def render_data_list_page(analyzer: OrderAnalyzer):
         st.warning("저장된 데이터가 없습니다.")
         return
 
+    # 주문수집일 최대값 (마지막 수집일)
+    last_collected = None
+    if analyzer.combined_df is not None and '주문수집일' in analyzer.combined_df.columns:
+        last_collected = pd.to_datetime(analyzer.combined_df['주문수집일'], errors='coerce').max()
+
+    total_orders = sum(p['주문수'] for p in periods)
+    total_cancel = sum(p['취소'] for p in periods)
     total_revenue = sum(p['매출'] for p in periods)
-    st.info(f"📊 총 **{len(periods)}개 기간** | 💰 **{total_revenue:,}원** 매출")
+
+    # 전체 요약
+    summary_parts = [f"📊 주문 **{total_orders:,}건** / 취소 **{total_cancel}건**", f"💰 **{total_revenue:,}원**"]
+    if last_collected and not pd.isna(last_collected):
+        summary_parts.append(f"🗓️ 마지막 수집: **{last_collected.strftime('%Y-%m-%d')}**")
+    st.info("  |  ".join(summary_parts))
 
     for i, p in enumerate(periods):
+        # 해당 기간의 주문수집일 분포
+        collected_dates = ""
+        if analyzer.combined_df is not None and '주문수집일' in analyzer.combined_df.columns:
+            period_df = analyzer.combined_df[analyzer.combined_df['기간'] == p['기간']] if '기간' in analyzer.combined_df.columns else analyzer.combined_df
+            dates = pd.to_datetime(period_df['주문수집일'], errors='coerce').dt.date.dropna().unique()
+            dates_sorted = sorted(dates)
+            if len(dates_sorted) == 1:
+                collected_dates = f"수집일: {dates_sorted[0]}"
+            elif len(dates_sorted) > 1:
+                collected_dates = f"수집일: {dates_sorted[0]} ~ {dates_sorted[-1]} ({len(dates_sorted)}일)"
+
         col1, col2, col3 = st.columns([3, 1, 1])
         with col1:
             st.markdown(f"**📅 {p['기간']}**")
-            fname = p['파일명']
-            st.caption(f"파일: {fname[:40]}..." if len(fname) > 40 else f"파일: {fname}")
+            if collected_dates:
+                st.caption(collected_dates)
         with col2:
             st.markdown(f"**{p['매출']:,}원**")
             st.caption(f"주문: {p['주문수']:,}건 | 취소: {p['취소']}건")
