@@ -145,7 +145,7 @@ class OrderAnalyzer:
     GITHUB_DATA_FILE = "data/order_data.csv"
     GITHUB_META_FILE = "data/metadata.json"
 
-    # GitHub에 저장할 원본 플레이오토 컬럼 (계산 컬럼 제외)
+    # GitHub에 저장할 원본 플레이오토 컬럼 (계산 컬럼 제외, 취소여부 포함)
     GITHUB_RAW_COLUMNS = [
         '쇼핑몰명', '별칭', '온라인상품명', '옵션', '결제완료일', '출고완료일',
         'SKU코드', 'SKU상품명', '주문수량', '수령자명', '수령자휴대폰번호', '주소',
@@ -153,7 +153,7 @@ class OrderAnalyzer:
         '주문자휴대폰번호', '쇼핑몰원주문번호', '주문수집일', '쇼핑몰상품코드',
         '교환여부', '추가구매옵션', '추가구매SKU코드', '추가구매SKU상품명',
         '추가구매주문수량', '주문자ID', '금액', '실결제금액', '배송비',
-        '배송지연여부', '묶음주문여부', '발송예정일', '계정'
+        '배송지연여부', '묶음주문여부', '발송예정일', '계정', '취소여부'
     ]
 
     def __init__(self, github_token: str = None, github_repo: str = None):
@@ -232,14 +232,11 @@ class OrderAnalyzer:
                     else:
                         df['사업장'] = '미분류'
 
-                # 취소여부
-                if '취소여부' not in df.columns:
-                    if '주문수량' in df.columns:
-                        df['취소여부'] = df['주문수량'] == 0
-                    else:
-                        df['취소여부'] = False
+                # 취소여부 — 원본 컬럼이 있으면 문자열 비교로 bool 변환, 없으면 주문수량 기반 추정
+                if '취소여부' in df.columns:
+                    df['취소여부'] = df['취소여부'].astype(str).str.lower() == 'true'
                 else:
-                    df['취소여부'] = df['취소여부'].astype(bool)
+                    df['취소여부'] = df['주문수량'] == 0 if '주문수량' in df.columns else False
 
                 # 기간/년월 — 항상 실제 결제완료일 기준으로 재계산 (업로드 날짜 사용 안 함)
                 valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
@@ -249,7 +246,6 @@ class OrderAnalyzer:
                 else:
                     min_d = max_d = now_kst().strftime('%Y-%m-%d')
                 df['기간'] = f"{min_d} ~ {max_d}"
-
                 df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
 
                 self.combined_df = df
