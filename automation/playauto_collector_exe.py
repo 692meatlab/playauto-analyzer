@@ -320,6 +320,27 @@ class PlayautoCollector:
             logger.warning("팝업 처리 최대 반복 도달")
             self.page.screenshot(path=str(LOG_DIR / "popup_timeout.png"))
 
+        # 3단계: modal-company-dim 오버레이 강제 제거 (클릭 차단 해제)
+        try:
+            overlay = self.page.locator(".modal-dim, .modal-company-dim").first
+            if overlay.is_visible(timeout=1000):
+                logger.info("modal-dim 오버레이 감지 — Escape 키 시도")
+                self.page.keyboard.press("Escape")
+                time.sleep(1)
+        except Exception:
+            pass
+
+        try:
+            still_blocking = self.page.locator(".modal-dim, .modal-company-dim").first
+            if still_blocking.is_visible(timeout=1000):
+                logger.info("Escape 후에도 오버레이 잔존 — JS로 강제 제거")
+                self.page.evaluate("""() => {
+                    document.querySelectorAll('.modal-dim, .modal-company-dim').forEach(el => el.remove());
+                }""")
+                time.sleep(0.5)
+        except Exception:
+            pass
+
     def go_to_orders(self):
         """주문 > 전체 주문 조회 페이지로 이동"""
         logger.info("주문 페이지 이동...")
@@ -641,7 +662,7 @@ class PlayautoCollector:
             return None
 
     def upload_to_github(self):
-        """GitHub 업로드"""
+        """GitHub 업로드 - 기존 데이터에 누적 (중복 제거)"""
         logger.info("GitHub 업로드...")
 
         if not self.downloaded_file or not self.downloaded_file.exists():
@@ -649,23 +670,22 @@ class PlayautoCollector:
             return False
 
         try:
-            # openpyxl로 엑셀 읽기
             from openpyxl import load_workbook
             import csv
             from io import StringIO
 
+            # 새로 수집된 데이터 읽기
             wb = load_workbook(self.downloaded_file)
             ws = wb.active
+            all_rows = list(ws.iter_rows(values_only=True))
+            if not all_rows:
+                logger.error("새 데이터 없음")
+                return False
 
-            # CSV로 변환
-            output = StringIO()
-            writer = csv.writer(output)
-            for row in ws.iter_rows(values_only=True):
-                writer.writerow(row)
-            csv_content = output.getvalue()
+            col_headers = all_rows[0]
+            new_data = all_rows[1:]
 
-            # GitHub 업로드
-            headers = {
+            api_headers = {
                 "Authorization": f"token {self.config['github_token']}",
                 "Accept": "application/vnd.github.v3+json"
             }
@@ -674,9 +694,31 @@ class PlayautoCollector:
             file_path = "data/order_data.csv"
             url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
 
-            # 기존 파일 SHA
-            resp = requests.get(url, headers=headers)
-            sha = resp.json().get('sha') if resp.status_code == 200 else None
+            # 기존 파일 가져오기
+            resp = requests.get(url, headers=api_headers)
+            sha = None
+            existing_rows = []
+
+            if resp.status_code == 200:
+                sha = resp.json().get('sha')
+                existing_content = base64.b64decode(resp.json()['content']).decode('utf-8')
+                reader = csv.reader(StringIO(existing_content))
+                rows = list(reader)
+                if len(rows) > 1:
+                    existing_rows = rows[1:]  # 헤더 제외
+
+            # 신규 데이터 추가 (하루 1회 수집이므로 중복 없음)
+            added = len(new_data)
+            for row in new_data:
+                existing_rows.append([str(v) if v is not None else '' for v in row])
+            logger.info(f"신규 {added}건 추가 (누적 총 {len(existing_rows)}건)")
+
+            # CSV 생성
+            output = StringIO()
+            writer = csv.writer(output)
+            writer.writerow(col_headers)
+            writer.writerows(existing_rows)
+            csv_content = output.getvalue()
 
             # 업로드
             content_b64 = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
@@ -688,7 +730,7 @@ class PlayautoCollector:
             if sha:
                 data["sha"] = sha
 
-            resp = requests.put(url, headers=headers, json=data)
+            resp = requests.put(url, headers=api_headers, json=data)
             if resp.status_code in [200, 201]:
                 logger.info("GitHub 업로드 성공!")
                 return True
