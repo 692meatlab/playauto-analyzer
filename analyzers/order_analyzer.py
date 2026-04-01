@@ -145,6 +145,17 @@ class OrderAnalyzer:
     GITHUB_DATA_FILE = "data/order_data.csv"
     GITHUB_META_FILE = "data/metadata.json"
 
+    # GitHub에 저장할 원본 플레이오토 컬럼 (계산 컬럼 제외)
+    GITHUB_RAW_COLUMNS = [
+        '쇼핑몰명', '별칭', '온라인상품명', '옵션', '결제완료일', '출고완료일',
+        'SKU코드', 'SKU상품명', '주문수량', '수령자명', '수령자휴대폰번호', '주소',
+        '배송메세지', '묶음번호', '쇼핑몰주문번호', '주문자명', '주문자전화번호',
+        '주문자휴대폰번호', '쇼핑몰원주문번호', '주문수집일', '쇼핑몰상품코드',
+        '교환여부', '추가구매옵션', '추가구매SKU코드', '추가구매SKU상품명',
+        '추가구매주문수량', '주문자ID', '금액', '실결제금액', '배송비',
+        '배송지연여부', '묶음주문여부', '발송예정일', '계정'
+    ]
+
     def __init__(self, github_token: str = None, github_repo: str = None):
         self.data: Dict[str, pd.DataFrame] = {}
         self.metadata: Dict[str, dict] = {}
@@ -230,18 +241,16 @@ class OrderAnalyzer:
                 else:
                     df['취소여부'] = df['취소여부'].astype(bool)
 
-                # 기간/년월
-                if '기간' not in df.columns:
-                    valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
-                    if len(valid_dates) > 0:
-                        min_d = pd.to_datetime(valid_dates.min()).strftime('%Y-%m-%d')
-                        max_d = pd.to_datetime(valid_dates.max()).strftime('%Y-%m-%d')
-                    else:
-                        min_d = max_d = now_kst().strftime('%Y-%m-%d')
-                    df['기간'] = f"{min_d} ~ {max_d}"
+                # 기간/년월 — 항상 실제 결제완료일 기준으로 재계산 (업로드 날짜 사용 안 함)
+                valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
+                if len(valid_dates) > 0:
+                    min_d = pd.to_datetime(valid_dates.min()).strftime('%Y-%m-%d')
+                    max_d = pd.to_datetime(valid_dates.max()).strftime('%Y-%m-%d')
+                else:
+                    min_d = max_d = now_kst().strftime('%Y-%m-%d')
+                df['기간'] = f"{min_d} ~ {max_d}"
 
-                if '년월' not in df.columns:
-                    df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
+                df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
 
                 self.combined_df = df
                 for period in df['기간'].unique():
@@ -302,9 +311,10 @@ class OrderAnalyzer:
             # 메타데이터 저장
             self.github.write_json(self.GITHUB_META_FILE, self.metadata, "Update metadata")
 
-            # 데이터 저장 or 삭제
+            # 데이터 저장 or 삭제 — 원본 컬럼만 저장 (계산 컬럼 제외)
             if self.combined_df is not None and not self.combined_df.empty:
-                self.github.write_csv(self.GITHUB_DATA_FILE, self.combined_df, "Update order data")
+                raw_cols = [c for c in self.GITHUB_RAW_COLUMNS if c in self.combined_df.columns]
+                self.github.write_csv(self.GITHUB_DATA_FILE, self.combined_df[raw_cols], "Update order data")
             else:
                 # 데이터가 비었으면 GitHub CSV 파일도 삭제
                 self.github.delete_file(self.GITHUB_DATA_FILE, "Delete order data (empty)")
