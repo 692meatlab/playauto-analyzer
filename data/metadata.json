@@ -1,14 +1,24 @@
 {
-  "2026-03-27 ~ 2026-03-30": {
-    "file_name": "playauto_20260330_filtered.xlsx",
+  "20260330_000000_manual": {
+    "file_name": "migrated",
+    "period": "2026-03-27 ~ 2026-03-30",
     "start_date": "2026-03-27",
     "end_date": "2026-03-30",
     "row_count": 59,
-    "original_row_count": 59,
-    "removed_duplicates": 0,
-    "order_count": 54,
-    "total_revenue": 3579500,
-    "cancel_count": 1,
-    "loaded_at": "2026-04-02 13:20:12"
+    "order_count": 59,
+    "total_revenue": 0,
+    "cancel_count": 0,
+    "loaded_at": "2026-03-30 00:00:00"
+  },
+  "20260401_000000_auto": {
+    "file_name": "auto-collected",
+    "period": "2026-03-31 ~ 2026-04-01",
+    "start_date": "2026-03-31",
+    "end_date": "2026-04-01",
+    "row_count": 62,
+    "order_count": 62,
+    "total_revenue": 0,
+    "cancel_count": 0,
+    "loaded_at": "2026-04-01 00:00:00"
   }
 }
