@@ -12,17 +12,6 @@
     "cancel_count": 1,
     "loaded_at": "2026-04-02 14:36:52"
   },
-  "20260402_145013_auto": {
-    "file_name": "auto-collected",
-    "period": "2026-03-31 ~ 2026-04-01",
-    "start_date": "2026-03-31",
-    "end_date": "2026-04-01",
-    "row_count": 31,
-    "order_count": 31,
-    "total_revenue": 0,
-    "cancel_count": 0,
-    "loaded_at": "2026-04-02 14:50:15"
-  },
   "20260403_082249_auto": {
     "file_name": "auto-collected",
     "period": "2026-04-01 ~ 2026-04-02",
