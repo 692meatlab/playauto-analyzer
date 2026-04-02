@@ -1,12 +1,1 @@
-{
-  "2026-03-27 ~ 2026-03-31": {
-    "file_name": "auto-collected",
-    "start_date": "2026-03-27",
-    "end_date": "2026-03-31",
-    "row_count": 107,
-    "order_count": 99,
-    "total_revenue": 6704550,
-    "cancel_count": 1,
-    "loaded_at": "2026-04-01 17:12:29"
-  }
-}
+{}
