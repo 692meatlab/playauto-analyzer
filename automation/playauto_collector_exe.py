@@ -715,21 +715,43 @@ class PlayautoCollector:
 
             logger.info(f"데이터 파일 업로드 성공: {upload_id}.csv ({len(new_data)}건)")
 
-            # 날짜 범위 계산 (결제완료일 컬럼 기준)
+            # 컬럼 인덱스 파악
             col_list = [str(h) if h is not None else '' for h in col_headers]
             date_col_idx = next((i for i, h in enumerate(col_list) if '결제완료일' in h), None)
+            amount_col_idx = next((i for i, h in enumerate(col_list) if h == '금액'), None)
+            qty_col_idx = next((i for i, h in enumerate(col_list) if '주문수량' in h), None)
+            bundle_col_idx = next((i for i, h in enumerate(col_list) if '묶음번호' in h), None)
+
+            # 날짜 범위 계산
             dates = []
-            if date_col_idx is not None:
-                for row in new_data:
-                    val = row[date_col_idx] if len(row) > date_col_idx else None
-                    if val:
-                        try:
-                            d = str(val)[:10]
-                            dates.append(d)
-                        except Exception:
-                            pass
+            for row in new_data:
+                val = row[date_col_idx] if date_col_idx is not None and len(row) > date_col_idx else None
+                if val:
+                    try:
+                        dates.append(str(val)[:10])
+                    except Exception:
+                        pass
             start_date = min(dates) if dates else now_kst().strftime('%Y-%m-%d')
             end_date = max(dates) if dates else start_date
+
+            # 매출/취소/주문수 계산
+            total_revenue = 0
+            cancel_count = 0
+            bundle_ids = set()
+            for row in new_data:
+                qty = row[qty_col_idx] if qty_col_idx is not None and len(row) > qty_col_idx else None
+                is_cancel = (qty is not None and str(qty).strip() in ('0', '0.0', ''))
+                if is_cancel:
+                    cancel_count += 1
+                else:
+                    amt = row[amount_col_idx] if amount_col_idx is not None and len(row) > amount_col_idx else 0
+                    try:
+                        total_revenue += int(float(str(amt).replace(',', ''))) if amt else 0
+                    except (ValueError, TypeError):
+                        pass
+                    if bundle_col_idx is not None and len(row) > bundle_col_idx and row[bundle_col_idx]:
+                        bundle_ids.add(row[bundle_col_idx])
+            order_count = len(bundle_ids) if bundle_ids else (len(new_data) - cancel_count)
 
             # metadata.json 업데이트
             meta_url = f"https://api.github.com/repos/{repo}/contents/data/metadata.json"
@@ -746,11 +768,12 @@ class PlayautoCollector:
                 'start_date': start_date,
                 'end_date': end_date,
                 'row_count': len(new_data),
-                'order_count': len(new_data),
-                'total_revenue': 0,
-                'cancel_count': 0,
+                'order_count': order_count,
+                'total_revenue': total_revenue,
+                'cancel_count': cancel_count,
                 'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
             }
+            logger.info(f"매출: {total_revenue:,}원 | 주문: {order_count}건 | 취소: {cancel_count}건")
 
             meta_content = base64.b64encode(
                 json.dumps(metadata, ensure_ascii=False, indent=2).encode('utf-8')
