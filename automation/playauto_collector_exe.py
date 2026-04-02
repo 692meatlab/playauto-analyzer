@@ -662,7 +662,7 @@ class PlayautoCollector:
             return None
 
     def upload_to_github(self):
-        """GitHub 업로드 - 기존 데이터에 누적 (중복 제거)"""
+        """GitHub 업로드 - 업로드별 개별 파일로 저장"""
         logger.info("GitHub 업로드...")
 
         if not self.downloaded_file or not self.downloaded_file.exists():
@@ -674,7 +674,6 @@ class PlayautoCollector:
             import csv
             from io import StringIO
 
-            # 새로 수집된 데이터 읽기
             wb = load_workbook(self.downloaded_file)
             ws = wb.active
             all_rows = list(ws.iter_rows(values_only=True))
@@ -689,54 +688,84 @@ class PlayautoCollector:
                 "Authorization": f"token {self.config['github_token']}",
                 "Accept": "application/vnd.github.v3+json"
             }
-
             repo = self.config['github_repo']
-            file_path = "data/order_data.csv"
-            url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
 
-            # 기존 파일 가져오기
-            resp = requests.get(url, headers=api_headers)
-            sha = None
-            existing_rows = []
-
-            if resp.status_code == 200:
-                sha = resp.json().get('sha')
-                existing_content = base64.b64decode(resp.json()['content']).decode('utf-8')
-                reader = csv.reader(StringIO(existing_content))
-                rows = list(reader)
-                if len(rows) > 1:
-                    existing_rows = rows[1:]  # 헤더 제외
-
-            # 신규 데이터 추가 (하루 1회 수집이므로 중복 없음)
-            added = len(new_data)
-            for row in new_data:
-                existing_rows.append([str(v) if v is not None else '' for v in row])
-            logger.info(f"신규 {added}건 추가 (누적 총 {len(existing_rows)}건)")
+            # 업로드 ID 생성
+            upload_id = now_kst().strftime('%Y%m%d_%H%M%S') + '_auto'
 
             # CSV 생성
             output = StringIO()
             writer = csv.writer(output)
             writer.writerow(col_headers)
-            writer.writerows(existing_rows)
+            for row in new_data:
+                writer.writerow([str(v) if v is not None else '' for v in row])
             csv_content = output.getvalue()
 
-            # 업로드
+            # 개별 파일로 업로드
+            upload_url = f"https://api.github.com/repos/{repo}/contents/data/uploads/{upload_id}.csv"
             content_b64 = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
-            data = {
+            resp = requests.put(upload_url, headers=api_headers, json={
                 "message": f"자동 수집: {now_kst().strftime('%Y-%m-%d %H:%M')}",
                 "content": content_b64,
                 "branch": "main"
-            }
-            if sha:
-                data["sha"] = sha
-
-            resp = requests.put(url, headers=api_headers, json=data)
-            if resp.status_code in [200, 201]:
-                logger.info("GitHub 업로드 성공!")
-                return True
-            else:
-                logger.error(f"GitHub 업로드 실패: {resp.status_code}")
+            })
+            if resp.status_code not in [200, 201]:
+                logger.error(f"데이터 파일 업로드 실패: {resp.status_code}")
                 return False
+
+            logger.info(f"데이터 파일 업로드 성공: {upload_id}.csv ({len(new_data)}건)")
+
+            # 날짜 범위 계산 (결제완료일 컬럼 기준)
+            col_list = [str(h) if h is not None else '' for h in col_headers]
+            date_col_idx = next((i for i, h in enumerate(col_list) if '결제완료일' in h), None)
+            dates = []
+            if date_col_idx is not None:
+                for row in new_data:
+                    val = row[date_col_idx] if len(row) > date_col_idx else None
+                    if val:
+                        try:
+                            d = str(val)[:10]
+                            dates.append(d)
+                        except Exception:
+                            pass
+            start_date = min(dates) if dates else now_kst().strftime('%Y-%m-%d')
+            end_date = max(dates) if dates else start_date
+
+            # metadata.json 업데이트
+            meta_url = f"https://api.github.com/repos/{repo}/contents/data/metadata.json"
+            meta_resp = requests.get(meta_url, headers=api_headers)
+            meta_sha = None
+            metadata = {}
+            if meta_resp.status_code == 200:
+                meta_sha = meta_resp.json().get('sha')
+                metadata = json.loads(base64.b64decode(meta_resp.json()['content']).decode('utf-8'))
+
+            metadata[upload_id] = {
+                'file_name': 'auto-collected',
+                'period': f"{start_date} ~ {end_date}",
+                'start_date': start_date,
+                'end_date': end_date,
+                'row_count': len(new_data),
+                'order_count': len(new_data),
+                'total_revenue': 0,
+                'cancel_count': 0,
+                'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
+            }
+
+            meta_content = base64.b64encode(
+                json.dumps(metadata, ensure_ascii=False, indent=2).encode('utf-8')
+            ).decode('utf-8')
+            meta_payload = {
+                "message": f"메타데이터 업데이트: {upload_id}",
+                "content": meta_content,
+                "branch": "main"
+            }
+            if meta_sha:
+                meta_payload["sha"] = meta_sha
+            requests.put(meta_url, headers=api_headers, json=meta_payload)
+
+            logger.info("GitHub 업로드 완료!")
+            return True
 
         except ImportError:
             logger.error("openpyxl 패키지 필요")

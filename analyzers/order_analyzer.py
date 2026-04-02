@@ -45,6 +45,16 @@ class GitHubStorage:
         self.last_error = f"API 요청 실패: {response.status_code} - {response.text[:200]}"
         return None
 
+    def list_dir(self, path: str) -> list:
+        """GitHub 디렉토리의 파일 목록 반환"""
+        url = f"{self.api_base}/repos/{self.repo}/contents/{path}?ref={self.branch}"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list):
+                return result
+        return []
+
     def read_json(self, path: str) -> Optional[dict]:
         """GitHub에서 JSON 파일 읽기"""
         file_info = self._get_file(path)
@@ -142,7 +152,7 @@ class OrderAnalyzer:
     META_FILE = DATA_DIR / 'order_metadata.json'
 
     # GitHub 저장 경로
-    GITHUB_DATA_FILE = "data/order_data.csv"
+    GITHUB_UPLOADS_DIR = "data/uploads"
     GITHUB_META_FILE = "data/metadata.json"
 
     # GitHub에 저장할 원본 플레이오토 컬럼 (계산 컬럼 제외, 취소여부 포함)
@@ -179,98 +189,75 @@ class OrderAnalyzer:
         else:
             self._load_from_local()
 
+    def _process_raw_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        """GitHub에서 읽은 원본 DataFrame에 파생 컬럼 추가"""
+        if '쇼핑몰' in df.columns and '쇼핑몰명' not in df.columns:
+            df = df.rename(columns={'쇼핑몰': '쇼핑몰명'})
+
+        if '금액' in df.columns:
+            df['금액'] = pd.to_numeric(df['금액'], errors='coerce').fillna(0).astype(int)
+        if '주문수량' in df.columns:
+            df['주문수량'] = pd.to_numeric(df['주문수량'], errors='coerce').fillna(0).astype(int)
+
+        if '결제완료일' in df.columns:
+            df['결제일시'] = pd.to_datetime(df['결제완료일'], errors='coerce')
+            df['날짜'] = df['결제일시'].dt.date
+        else:
+            df['날짜'] = None
+
+        if '출고완료일' in df.columns:
+            df['출고일시'] = pd.to_datetime(df['출고완료일'], errors='coerce')
+            df['출고날짜'] = df['출고일시'].dt.date
+        else:
+            df['출고날짜'] = df['날짜']
+
+        if '사업장' not in df.columns:
+            df['사업장'] = df['계정'].apply(self.classify_business) if '계정' in df.columns else '미분류'
+
+        if '취소여부' in df.columns:
+            df['취소여부'] = df['취소여부'].astype(str).str.lower() == 'true'
+        else:
+            df['취소여부'] = df['주문수량'] == 0 if '주문수량' in df.columns else False
+
+        # 기간은 이 파일 자체의 날짜 범위로 계산
+        valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
+        if len(valid_dates) > 0:
+            min_d = pd.to_datetime(valid_dates.min()).strftime('%Y-%m-%d')
+            max_d = pd.to_datetime(valid_dates.max()).strftime('%Y-%m-%d')
+        else:
+            min_d = max_d = now_kst().strftime('%Y-%m-%d')
+        df['기간'] = f"{min_d} ~ {max_d}"
+        df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
+        return df
+
     def _load_from_github(self):
-        """GitHub에서 데이터 로드"""
-        self.load_error = None  # 에러 저장용
+        """GitHub에서 데이터 로드 — 업로드별 개별 파일"""
+        self.load_error = None
         try:
-            # 메타데이터 로드
             meta = self.github.read_json(self.GITHUB_META_FILE)
             if meta:
                 self.metadata = meta
 
-            # 데이터 로드
-            df = self.github.read_csv(self.GITHUB_DATA_FILE)
-            if df is not None and not df.empty:
-                # 쇼핑몰 → 쇼핑몰명 컬럼명 통일
-                if '쇼핑몰' in df.columns and '쇼핑몰명' not in df.columns:
-                    df = df.rename(columns={'쇼핑몰': '쇼핑몰명'})
+            files = self.github.list_dir(self.GITHUB_UPLOADS_DIR)
+            csv_files = [f for f in files if f.get('name', '').endswith('.csv')]
 
-                # 금액/수량 숫자 변환
-                if '금액' in df.columns:
-                    df['금액'] = pd.to_numeric(df['금액'], errors='coerce').fillna(0).astype(int)
-                if '주문수량' in df.columns:
-                    df['주문수량'] = pd.to_numeric(df['주문수량'], errors='coerce').fillna(0).astype(int)
+            for file_info in csv_files:
+                upload_id = file_info['name'].replace('.csv', '')
+                df = self.github.read_csv(f"{self.GITHUB_UPLOADS_DIR}/{file_info['name']}")
+                if df is not None and not df.empty:
+                    self.data[upload_id] = self._process_raw_df(df)
 
-                # 날짜 파생 컬럼 — 없으면 원본 컬럼에서 생성
-                if '날짜' not in df.columns:
-                    if '결제완료일' in df.columns:
-                        df['결제일시'] = pd.to_datetime(df['결제완료일'], errors='coerce')
-                        df['날짜'] = df['결제일시'].dt.date
-                    else:
-                        df['날짜'] = None
-                else:
-                    df['날짜'] = pd.to_datetime(df['날짜']).dt.date
+            # metadata에 없는 항목 보정
+            for upload_id, df in self.data.items():
+                if upload_id not in self.metadata:
+                    self.metadata[upload_id] = self._calc_upload_meta(df, 'auto-collected')
 
-                if '출고날짜' not in df.columns:
-                    if '출고완료일' in df.columns:
-                        df['출고일시'] = pd.to_datetime(df['출고완료일'], errors='coerce')
-                        df['출고날짜'] = df['출고일시'].dt.date
-                    else:
-                        df['출고날짜'] = df['날짜']
-                else:
-                    df['출고날짜'] = pd.to_datetime(df['출고날짜']).dt.date
+            # 데이터 파일이 없는 stale metadata 제거
+            for uid in list(self.metadata.keys()):
+                if uid not in self.data:
+                    del self.metadata[uid]
 
-                if '결제일시' in df.columns:
-                    df['결제일시'] = pd.to_datetime(df['결제일시'])
-                if '출고일시' in df.columns:
-                    df['출고일시'] = pd.to_datetime(df['출고일시'])
-
-                # 사업장 분류
-                if '사업장' not in df.columns:
-                    if '계정' in df.columns:
-                        df['사업장'] = df['계정'].apply(self.classify_business)
-                    else:
-                        df['사업장'] = '미분류'
-
-                # 취소여부 — 원본 컬럼이 있으면 문자열 비교로 bool 변환, 없으면 주문수량 기반 추정
-                if '취소여부' in df.columns:
-                    df['취소여부'] = df['취소여부'].astype(str).str.lower() == 'true'
-                else:
-                    df['취소여부'] = df['주문수량'] == 0 if '주문수량' in df.columns else False
-
-                # 기간/년월 — 항상 실제 결제완료일 기준으로 재계산 (업로드 날짜 사용 안 함)
-                valid_dates = df['날짜'].dropna() if '날짜' in df.columns else pd.Series([], dtype=object)
-                if len(valid_dates) > 0:
-                    min_d = pd.to_datetime(valid_dates.min()).strftime('%Y-%m-%d')
-                    max_d = pd.to_datetime(valid_dates.max()).strftime('%Y-%m-%d')
-                else:
-                    min_d = max_d = now_kst().strftime('%Y-%m-%d')
-                df['기간'] = f"{min_d} ~ {max_d}"
-                df['년월'] = pd.to_datetime(df['날짜'], errors='coerce').dt.strftime('%Y-%m')
-
-                self.combined_df = df
-                for period in df['기간'].unique():
-                    self.data[period] = df[df['기간'] == period].copy()
-
-                # metadata와 data 기간 키 동기화
-                # (자동화 업로드와 수동 업로드의 기간 키가 다를 수 있음)
-                for period in list(self.data.keys()):
-                    if period not in self.metadata:
-                        df_p = self.data[period]
-                        self.metadata[period] = {
-                            'file_name': 'auto-collected',
-                            'row_count': len(df_p),
-                            'order_count': int(df_p['묶음번호'].nunique()) if '묶음번호' in df_p.columns else len(df_p),
-                            'total_revenue': int(df_p['금액'].sum()) if '금액' in df_p.columns else 0,
-                            'cancel_count': int(df_p['취소여부'].sum()) if '취소여부' in df_p.columns else 0,
-                            'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S')
-                        }
-                # 데이터에 없는 stale metadata 제거
-                for period in list(self.metadata.keys()):
-                    if period not in self.data:
-                        del self.metadata[period]
-            else:
-                self.load_error = f"CSV 로드 실패: {getattr(self.github, 'last_error', 'unknown')}"
+            self._update_combined()
         except Exception as e:
             self.load_error = str(e)
             print(f"GitHub 데이터 로드 실패: {e}")
@@ -301,21 +288,53 @@ class OrderAnalyzer:
         else:
             self._save_to_local()
 
-    def _save_to_github(self):
-        """GitHub에 데이터 저장"""
-        try:
-            # 메타데이터 저장
-            self.github.write_json(self.GITHUB_META_FILE, self.metadata, "Update metadata")
+    def _calc_upload_meta(self, df: pd.DataFrame, file_name: str) -> dict:
+        """DataFrame에서 메타데이터 계산"""
+        return {
+            'file_name': file_name,
+            'row_count': len(df),
+            'order_count': int(df['묶음번호'].nunique()) if '묶음번호' in df.columns else len(df),
+            'total_revenue': int(df['금액'].sum()) if '금액' in df.columns else 0,
+            'cancel_count': int(df['취소여부'].sum()) if '취소여부' in df.columns else 0,
+            'loaded_at': now_kst().strftime('%Y-%m-%d %H:%M:%S'),
+            'period': df['기간'].iloc[0] if '기간' in df.columns and len(df) > 0 else '',
+        }
 
-            # 데이터 저장 or 삭제 — 원본 컬럼만 저장 (계산 컬럼 제외)
-            if self.combined_df is not None and not self.combined_df.empty:
-                raw_cols = [c for c in self.GITHUB_RAW_COLUMNS if c in self.combined_df.columns]
-                self.github.write_csv(self.GITHUB_DATA_FILE, self.combined_df[raw_cols], "Update order data")
-            else:
-                # 데이터가 비었으면 GitHub CSV 파일도 삭제
-                self.github.delete_file(self.GITHUB_DATA_FILE, "Delete order data (empty)")
-        except Exception as e:
-            print(f"GitHub 저장 실패: {e}")
+    def _save_metadata(self):
+        """메타데이터만 저장"""
+        if self.github:
+            try:
+                self.github.write_json(self.GITHUB_META_FILE, self.metadata, "Update metadata")
+            except Exception as e:
+                print(f"메타데이터 저장 실패: {e}")
+        else:
+            with open(self.META_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.metadata, f, ensure_ascii=False, indent=2, default=str)
+
+    def _save_upload_file(self, upload_id: str, df: pd.DataFrame):
+        """개별 업로드 파일 저장"""
+        if self.github:
+            try:
+                raw_cols = [c for c in self.GITHUB_RAW_COLUMNS if c in df.columns]
+                self.github.write_csv(
+                    f"{self.GITHUB_UPLOADS_DIR}/{upload_id}.csv",
+                    df[raw_cols],
+                    f"Upload: {upload_id}"
+                )
+            except Exception as e:
+                print(f"업로드 파일 저장 실패: {e}")
+
+    def _save_to_github(self):
+        """GitHub에 메타데이터 저장 (데이터 파일은 개별 저장)"""
+        self._save_metadata()
+
+    def _delete_upload_file(self, upload_id: str):
+        """GitHub에서 개별 업로드 파일 삭제"""
+        if self.github:
+            self.github.delete_file(
+                f"{self.GITHUB_UPLOADS_DIR}/{upload_id}.csv",
+                f"Delete upload: {upload_id}"
+            )
 
     def _save_to_local(self):
         """로컬에 데이터 저장"""
@@ -415,20 +434,19 @@ class OrderAnalyzer:
         df['기간'] = f"{start_str} ~ {end_str}"
         df['년월'] = pd.to_datetime(df['날짜']).dt.strftime('%Y-%m')
 
-        # 데이터 저장
-        period_key = df['기간'].iloc[0]
-        self.data[period_key] = df
+        # 업로드 ID 생성 (시간 기반 고유값)
+        upload_id = now_kst().strftime('%Y%m%d_%H%M%S') + '_manual'
+        self.data[upload_id] = df
 
         # 메타데이터 저장
         file_name = file.name if hasattr(file, 'name') else str(file)
-
-        # 통계 계산
         total_orders = df['묶음번호'].nunique() if '묶음번호' in df.columns else len(df)
         total_revenue = df['금액'].sum() if '금액' in df.columns else 0
         cancel_count = df['취소여부'].sum()
 
-        self.metadata[period_key] = {
+        self.metadata[upload_id] = {
             'file_name': file_name,
+            'period': f"{start_str} ~ {end_str}",
             'start_date': start_str,
             'end_date': end_str,
             'row_count': len(df),
@@ -441,7 +459,8 @@ class OrderAnalyzer:
         }
 
         self._update_combined()
-        self._save_data()
+        self._save_upload_file(upload_id, df)
+        self._save_metadata()
 
         return df
 
@@ -452,39 +471,50 @@ class OrderAnalyzer:
         else:
             self.combined_df = None
 
-    def delete_period(self, period: str) -> bool:
-        """특정 기간 데이터 삭제"""
-        if period in self.data:
-            del self.data[period]
-            if period in self.metadata:
-                del self.metadata[period]
+    def delete_period(self, upload_id: str) -> bool:
+        """특정 업로드 데이터 삭제"""
+        if upload_id in self.data:
+            del self.data[upload_id]
+            if upload_id in self.metadata:
+                del self.metadata[upload_id]
             self._update_combined()
-            self._save_data()
+            self._delete_upload_file(upload_id)
+            self._save_metadata()
             return True
         return False
 
     def clear_all_data(self):
         """모든 데이터 삭제"""
+        upload_ids = list(self.data.keys())
         self.data = {}
         self.metadata = {}
         self.combined_df = None
 
         if self.github:
-            # GitHub에서 삭제
-            self.github.delete_file(self.GITHUB_DATA_FILE, "Clear all data")
+            for upload_id in upload_ids:
+                self.github.delete_file(
+                    f"{self.GITHUB_UPLOADS_DIR}/{upload_id}.csv",
+                    f"Clear: {upload_id}"
+                )
             self.github.delete_file(self.GITHUB_META_FILE, "Clear metadata")
         else:
-            # 로컬에서 삭제
             if self.DATA_FILE.exists():
                 self.DATA_FILE.unlink()
             if self.META_FILE.exists():
                 self.META_FILE.unlink()
 
     def get_loaded_periods(self) -> List[dict]:
-        """로드된 기간 목록 반환"""
+        """로드된 업로드 목록 반환"""
         periods = []
-        for period, meta in self.metadata.items():
+        for upload_id, meta in self.metadata.items():
+            # period는 metadata에 저장된 값 사용, 없으면 data에서 계산
+            period = meta.get('period', '')
+            if not period and upload_id in self.data:
+                df = self.data[upload_id]
+                if '기간' in df.columns and len(df) > 0:
+                    period = df['기간'].iloc[0]
             periods.append({
+                'upload_id': upload_id,
                 '기간': period,
                 '파일명': meta.get('file_name', ''),
                 '건수': meta.get('row_count', 0),
@@ -493,7 +523,7 @@ class OrderAnalyzer:
                 '취소': meta.get('cancel_count', 0),
                 '로드일시': meta.get('loaded_at', '')
             })
-        return sorted(periods, key=lambda x: x['기간'], reverse=True)
+        return sorted(periods, key=lambda x: x['upload_id'], reverse=True)
 
     # ===== 날짜 범위 관련 (매출용: 결제완료일 기준) =====
 

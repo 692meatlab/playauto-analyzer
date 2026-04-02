@@ -1129,7 +1129,7 @@ def render_data_list_page(analyzer: OrderAnalyzer):
             st.caption(f"주문: {p['주문수']:,}건 | 취소: {p['취소']}건")
         with col3:
             if st.button("🗑️ 삭제", key=f"del_{i}", use_container_width=True):
-                analyzer.delete_period(p['기간'])
+                analyzer.delete_period(p['upload_id'])
                 clear_analyzer_cache()
                 st.rerun()
         st.markdown("---")
