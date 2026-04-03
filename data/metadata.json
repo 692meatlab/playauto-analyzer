@@ -9,5 +9,18 @@
     "total_revenue": 2092000,
     "cancel_count": 3,
     "loaded_at": "2026-04-03 08:22:51"
+  },
+  "20260403_103228_manual": {
+    "file_name": "202503~20260401 플토 주문수집.xlsx",
+    "period": "2025-03-18 ~ 2026-04-01",
+    "start_date": "2025-03-18",
+    "end_date": "2026-04-01",
+    "row_count": 12681,
+    "original_row_count": 12729,
+    "removed_duplicates": 48,
+    "order_count": 11432,
+    "total_revenue": 715032700,
+    "cancel_count": 459,
+    "loaded_at": "2026-04-03 10:32:28"
   }
 }
