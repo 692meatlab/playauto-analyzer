@@ -33,5 +33,16 @@
     "total_revenue": 2382900,
     "cancel_count": 0,
     "loaded_at": "2026-04-04 02:01:54"
+  },
+  "20260405_020151_auto": {
+    "file_name": "auto-collected",
+    "period": "2026-04-05 ~ 2026-04-05",
+    "start_date": "2026-04-05",
+    "end_date": "2026-04-05",
+    "row_count": 0,
+    "order_count": 0,
+    "total_revenue": 0,
+    "cancel_count": 0,
+    "loaded_at": "2026-04-05 02:01:52"
   }
 }
