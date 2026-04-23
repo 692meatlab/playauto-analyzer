@@ -231,5 +231,16 @@
     "total_revenue": 2629300,
     "cancel_count": 3,
     "loaded_at": "2026-04-23 02:01:51"
+  },
+  "20260424_020150_auto": {
+    "file_name": "auto-collected",
+    "period": "2026-04-22 ~ 2026-04-23",
+    "start_date": "2026-04-22",
+    "end_date": "2026-04-23",
+    "row_count": 77,
+    "order_count": 67,
+    "total_revenue": 3315800,
+    "cancel_count": 0,
+    "loaded_at": "2026-04-24 02:01:52"
   }
 }
